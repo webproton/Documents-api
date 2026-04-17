@@ -1,0 +1,22 @@
+[flake8]
+
+exclude =
+    .git,
+    __pycache__,
+    .pytest_cache,
+    .venv,
+    venv,
+    dist,
+    build,
+    manage.py,
+    */migrations/*,
+    locustfile.py
+ignore = 
+        # W503 : line break before binary operator
+        W503,
+        # F811 : redefinition of unused name from line N
+
+        E203,
+
+
+max-line-length = 88
