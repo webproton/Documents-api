@@ -1,0 +1,81 @@
+# 🔹 Environment
+.env
+.env.*
+!.env.example
+
+# 🔹 Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# 🔹 Virtual environments
+venv/
+myvenv/
+.envrc
+
+# 🔹 Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 🔹 Logs
+logs/
+*.log
+
+# 🔹 IDE
+.vscode/
+.idea/
+
+# =========================
+# 🔹 DOCKER
+# =========================
+postgres-data/
+*.pid
+
+# 🔹 Database / dumps
+postgres-data/
+dump.sql
+*.sql
+
+# 🔹 Static / media
+**/media/**
+**/staticfiles/**
+
+# 🔹 Cassettes (например pytest-vcr)
+**/cassettes/**
+
+# 🔹 Migrations (разрешаем init)
+!**/migrations/__init__.py
+
+# 🔹 CSV (если не нужны)
+*.csv
+
+# 🔹 Scripts (осторожно!)
+# Если хочешь игнорить ВСЕ .sh — раскомментируй:
+# *.sh
+
+
+
+# =========================
+# 🔹 CACHE / TEMP
+# =========================
+*.tmp
+*.bak
+
+
+# 🔹 Cache
+.pytest_cache/
+__pycache__/
+
+# 🔹 Misc
+notes
+ff
+note.txt
+hot_task.txt
+cluster.txt
+nav.txt
+planFinger.txt
+nginxwork.txt
+shema.txt
