@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -48,7 +49,11 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "apps.accounts",
+    "django_filters",
+    "django_extensions",
     "drf_yasg",
 ]
 
@@ -153,6 +158,16 @@ MEDIA_ROOT = BASE_DIR / "media"
 AUTH_USER_MODEL = "accounts.User"
 
 
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    # logout
+    "BLACKLIST_AFTER_ROTATION": True,
+    "ROTATE_REFRESH_TOKENS": True,
+}
+
+
 REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     "DEFAULT_RENDERER_CLASSES": [
@@ -162,8 +177,7 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.JSONParser",
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.SessionAuthentication",
-        "rest_framework.authentication.BasicAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
 }
@@ -180,7 +194,13 @@ CELERY_RESULT_SERIALIZER = "json"
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")
-EMAIL_PORT = env("EMAIL_PORT", default=1025)
+EMAIL_PORT = env.int("EMAIL_PORT", default=1025)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
+
+
+EMAIL_CONFIRM_BASE_URL = env("EMAIL_CONFIRM_BASE_URL")
+
+SWAGGER_USE_COMPAT_RENDERERS = False
