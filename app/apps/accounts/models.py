@@ -15,7 +15,8 @@ class UserManager(BaseUserManager):
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
-        user.is_active = bool(False)
+        if "is_active" not in extra_fields:
+            user.is_active = False
         user.save(using=self._db)
         return user
 

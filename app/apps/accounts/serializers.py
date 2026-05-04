@@ -1,4 +1,5 @@
 from django.contrib.auth.password_validation import validate_password
+from django.db import IntegrityError
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -14,23 +15,14 @@ class LoginSerializer(TokenObtainPairSerializer):
 
     def validate(self, attrs):
         # get user
-        email = attrs["email"]
-        password = attrs["password"]
-
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            raise serializers.ValidationError("Invalid credentials")
-
-        if not user.check_password(password):
-            raise serializers.ValidationError("Invalid credentials")
-
-        # ❗ check user before generate token
-        if not user.is_active:
-            raise serializers.ValidationError("Email is not confirmed")
 
         # generate token
         data = super().validate(attrs)
+
+        user = self.user  # уже установлен SimpleJWT
+
+        if not user.is_active:
+            raise serializers.ValidationError("Email is not confirmed")
 
         data["email"] = user.email
         data["id"] = user.id
@@ -64,10 +56,14 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        user = User.objects.create_user(
-            email=validated_data["email"], password=validated_data["password"]
-        )
-        return user
+        try:
+            return User.objects.create_user(
+                email=validated_data["email"],
+                password=validated_data["password"],
+                is_active=False,
+            )
+        except IntegrityError:
+            raise serializers.ValidationError({"email": "Email already exists"})
 
 
 class ConfirmEmailSerializer(serializers.Serializer):

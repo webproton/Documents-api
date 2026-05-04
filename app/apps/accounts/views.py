@@ -11,12 +11,14 @@ from .serializers import (
     LogoutSerializer,
     RegisterSerializer,
 )
-from .services import (
-    confirm_email,
-    create_email_confirmation,
-    get_valid_email_confirmation,
-    send_confirmation_email,
-)
+from .services import confirm_email_by_token, register_user_flow
+
+
+class MeAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        return Response({"id": request.user.id})
 
 
 class LogoutAPIView(APIView):
@@ -80,13 +82,8 @@ class RegisterAPIView(APIView):
         serializer.is_valid(raise_exception=True)
 
         # Create user but keep account inactive until email confirmation
-        user = serializer.save(is_active=False)
-
         # Create email confirmation token + trigger email sending
-        confirmation = create_email_confirmation(user)
-
-        # Send email
-        send_confirmation_email(user=user, confirmation=confirmation)
+        register_user_flow(**serializer.validated_data)
 
         return Response(
             {
@@ -130,19 +127,13 @@ class ConfirmEmailAPIView(APIView):
         serializer = ConfirmEmailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        token = serializer.validated_data["token"]
+        result = confirm_email_by_token(token=serializer.validated_data["token"])
 
-        # 2. Check token in DB + validity rules
-        confirmation = get_valid_email_confirmation(token)
-
-        if not confirmation:
+        if not result:
             return Response(
                 {"error": "Invalid or expired token"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        # 3. confirm email
-        confirm_email(confirmation)
 
         # 4. Success response
         return Response({"message": "Email confirmed."}, status=status.HTTP_200_OK)
