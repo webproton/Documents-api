@@ -19,7 +19,10 @@ dependencies = [
     "boto3 (>=1.42.89,<2.0.0)",
     "django-environ (>=0.13.0,<0.14.0)",
     "django-celery-beat (>=2.9.0,<3.0.0)",
-    "django-redis (>=6.0.0,<7.0.0)"
+    "django-redis (>=6.0.0,<7.0.0)",
+    "djangorestframework-simplejwt (>=5.5.1,<6.0.0)",
+    "django-filter (>=25.2,<26.0)",
+    "pillow (>=12.2.0,<13.0.0)"
 ]
 
 
@@ -27,6 +30,9 @@ dependencies = [
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.isort]
+profile = "black"
+line_length = 88
 
 [dependency-groups]
 dev = [
@@ -36,5 +42,9 @@ dev = [
     "pylint (>=4.0.5,<5.0.0)",
     "black (>=26.3.1,<27.0.0)",
     "pylint-django (>=2.7.0,<3.0.0)",
-    "pre-commit (>=4.5.1,<5.0.0)"
+    "pre-commit (>=4.5.1,<5.0.0)",
+    "django-extensions (>=4.1,<5.0)",
+    "pytest-django (>=4.12.0,<5.0.0)",
+    "coverage (>=7.13.5,<8.0.0)",
+    "pytest-cov (>=7.1.0,<8.0.0)"
 ]
