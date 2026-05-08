@@ -12,7 +12,6 @@ from .serializers import (
     LogoutSerializer,
     RegisterSerializer,
 )
-from .services import register_user_flow
 
 
 class MeAPIView(APIView):
@@ -84,7 +83,7 @@ class RegisterAPIView(APIView):
 
         # Create user but keep account inactive until email confirmation
         # Create email confirmation token + trigger email sending
-        register_user_flow(**serializer.validated_data)
+        serializer.save()
 
         return Response(
             {

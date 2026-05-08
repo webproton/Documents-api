@@ -1,9 +1,10 @@
 from django.contrib.auth.password_validation import validate_password
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import EmailConfirmation, User
+from .tasks import send_confirmation_email_task
 
 
 class LogoutSerializer(serializers.Serializer):
@@ -62,11 +63,24 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         try:
-            return User.objects.create_user(
-                email=validated_data["email"],
-                password=validated_data["password"],
-                is_active=False,
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    email=validated_data["email"],
+                    password=validated_data["password"],
+                    is_active=False,
+                )
+
+                confirmation = EmailConfirmation.create_email_confirmation(user)
+
+            transaction.on_commit(
+                lambda: send_confirmation_email_task.delay(
+                    user_email=user.email,
+                    token=str(confirmation.token),
+                )
             )
+
+            return user
+
         except IntegrityError:
             raise serializers.ValidationError({"email": "Email already exists"})
 
