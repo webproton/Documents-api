@@ -72,12 +72,11 @@ class RegisterSerializer(serializers.ModelSerializer):
 
                 confirmation = EmailConfirmation.create_email_confirmation(user)
 
-            transaction.on_commit(
-                lambda: send_confirmation_email_task.delay(
+                # send the task immediately after successful creation
+                send_confirmation_email_task.delay(
                     user_email=user.email,
                     token=str(confirmation.token),
                 )
-            )
 
             return user
 
