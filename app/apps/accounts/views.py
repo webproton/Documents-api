@@ -5,13 +5,14 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from .models import EmailConfirmation
 from .serializers import (
     ConfirmEmailSerializer,
     LoginSerializer,
     LogoutSerializer,
     RegisterSerializer,
 )
-from .services import confirm_email_by_token, register_user_flow
+from .services import register_user_flow
 
 
 class MeAPIView(APIView):
@@ -127,7 +128,9 @@ class ConfirmEmailAPIView(APIView):
         serializer = ConfirmEmailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        result = confirm_email_by_token(token=serializer.validated_data["token"])
+        result = EmailConfirmation.confirm_email_by_token(
+            token=serializer.validated_data["token"]
+        )
 
         if not result:
             return Response(
