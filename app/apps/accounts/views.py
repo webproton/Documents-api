@@ -1,4 +1,5 @@
-from rest_framework import permissions, status
+from rest_framework import generics, permissions, status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
@@ -10,8 +11,34 @@ from .serializers import (
     ConfirmEmailSerializer,
     LoginSerializer,
     LogoutSerializer,
+    ProfileSerializer,
     RegisterSerializer,
+    UpdateProfileSerializer,
 )
+
+
+class ProfileAPIView(generics.RetrieveUpdateAPIView):
+    """
+    Endpoint for current user's profile.
+
+    GET     → retrieve profile
+    PUT     → full update
+    PATCH   → partial update
+
+    Works only with request.user (no access to other users).
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_serializer_class(self):
+        if self.request.method in ("PUT", "PATCH"):
+            return UpdateProfileSerializer
+        return ProfileSerializer
+
+    def get_object(self):
+        return self.request.user
 
 
 class MeAPIView(APIView):

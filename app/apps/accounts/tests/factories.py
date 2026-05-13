@@ -22,6 +22,13 @@ class UserFactory(factory.django.DjangoModelFactory):
     last_name = "User"
     is_active = False
 
+    class Params:
+        with_avatar = factory.Trait(
+            avatar=factory.django.ImageField(
+                filename="avatar.jpg",
+            )
+        )
+
 
 class EmailConfirmationFactory(factory.django.DjangoModelFactory):
     """
