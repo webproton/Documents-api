@@ -15,4 +15,4 @@ def user():
 
 @pytest.fixture(autouse=True)
 def disable_celery_tasks(settings):
-    settings.CELERY_TASK_ALWAYS_EAGER = False
+    settings.CELERY_TASK_ALWAYS_EAGER = True

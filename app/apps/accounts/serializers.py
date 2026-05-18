@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
@@ -148,15 +149,12 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
 
     def validate_avatar(self, value):
 
-        if value.size > 5 * 1024 * 1024:
+        if value.size > settings.AVATAR_MAX_SIZE:
             raise serializers.ValidationError("Max size 5MB")
 
         content_type = getattr(value, "content_type", None)
 
-        allowed_types = {
-            "image/jpeg",
-            "image/png",
-        }
+        allowed_types = settings.ALLOWED_AVATAR_TYPES
 
         # type check
 
