@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from apps.accounts.tests.factories import EmailConfirmationFactory, User
@@ -10,10 +11,14 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 
 @pytest.mark.django_db
-def test_register_user(api_client):
+@patch("app.apps.accounts.serializers.send_confirmation_email_task.delay")
+def test_register_user(mock_send_email, api_client):
     url = reverse("apps.accounts:register")
 
-    data = {"email": "test@test.com", "password": "StrongPass123"}
+    data = {
+        "email": "test@test.com",
+        "password": "StrongPass123",
+    }
 
     response = api_client.post(url, data, format="json")
 
@@ -21,7 +26,10 @@ def test_register_user(api_client):
     assert response.data["status"] == "confirmation_required"
 
     user = User.objects.get(email=data["email"])
+
     assert user.is_active is False
+
+    mock_send_email.assert_called_once()
 
 
 @pytest.mark.django_db

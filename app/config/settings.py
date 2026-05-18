@@ -197,7 +197,7 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 
 
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")
 EMAIL_PORT = env.int("EMAIL_PORT", default=1025)
@@ -210,3 +210,10 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
 EMAIL_CONFIRM_BASE_URL = env("EMAIL_CONFIRM_BASE_URL")
 
 SWAGGER_USE_COMPAT_RENDERERS = False
+
+AVATAR_MAX_SIZE = 5 * 1024 * 1024
+
+ALLOWED_AVATAR_TYPES = {
+    "image/jpeg",
+    "image/png",
+}

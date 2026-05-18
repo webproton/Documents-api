@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
@@ -109,3 +110,55 @@ class EmailConfirmationSerializer(serializers.ModelSerializer):
             "is_confirmed",
         ]
         read_only_fields = fields
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    """
+    Read-only serializer for user profile.
+    Used for GET /profile/
+    """
+
+    class Meta:
+        model = User
+        fields = ["id", "email", "first_name", "last_name", "avatar"]
+
+
+class UpdateProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer for updating profile data.
+    Used for PUT/PATCH /profile/
+    """
+
+    avatar = serializers.ImageField(required=False)
+
+    first_name = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        max_length=150,
+    )
+
+    last_name = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        max_length=150,
+    )
+
+    class Meta:
+        model = User
+        fields = ["first_name", "last_name", "avatar"]
+
+    def validate_avatar(self, value):
+
+        if value.size > settings.AVATAR_MAX_SIZE:
+            raise serializers.ValidationError("Max size 5MB")
+
+        content_type = getattr(value, "content_type", None)
+
+        allowed_types = settings.ALLOWED_AVATAR_TYPES
+
+        # type check
+
+        if content_type not in allowed_types:
+            raise serializers.ValidationError("Only JPEG and PNG are allowed")
+
+        return value

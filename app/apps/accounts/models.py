@@ -8,6 +8,11 @@ from django.db import models
 from django.utils import timezone
 
 
+def avatar_upload_path(instance, filename):
+    ext = filename.split(".")[-1]
+    return f"users/{instance.id}/avatar/{uuid.uuid4()}.{ext}"
+
+
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
@@ -32,6 +37,8 @@ class UserManager(BaseUserManager):
 class User(AbstractUser):
     username = None
     email = models.EmailField(unique=True)
+
+    avatar = models.ImageField(blank=True, null=True, upload_to=avatar_upload_path)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
