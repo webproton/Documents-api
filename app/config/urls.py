@@ -35,6 +35,10 @@ schema_view = get_schema_view(
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("app.apps.accounts.urls")),
+    path(
+        "api/documents/",
+        include("app.apps.documents.urls", namespace="app.apps.documents"),
+    ),
     re_path(r"^swagger/$", schema_view.with_ui("swagger", cache_timeout=0)),
     re_path(r"^redoc/$", schema_view.with_ui("redoc", cache_timeout=0)),
 ]
