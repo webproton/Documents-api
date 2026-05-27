@@ -4,11 +4,8 @@ import factory
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 
-from app.apps.documents.models.document import Document, DocumentStatus
-from app.apps.documents.models.document_request import (
-    DocumentRequest,
-    DocumentRequestStatus,
-)
+from app.apps.documents.models.document import Document
+from app.apps.documents.models.document_request import DocumentRequest
 from app.apps.documents.models.document_type import DocumentType
 
 
@@ -28,7 +25,7 @@ class DocumentRequestFactory(factory.django.DjangoModelFactory):
     recipient_email = factory.Sequence(lambda n: f"user{n}@test.com")
     document_type = factory.SubFactory(DocumentTypeFactory)
 
-    status = DocumentRequestStatus.PENDING
+    status = "PENDING"
 
     expires_at = factory.LazyFunction(lambda: timezone.now() + timedelta(days=30))
 
@@ -45,7 +42,7 @@ class DocumentFactory(factory.django.DjangoModelFactory):
     expiration_date = factory.LazyFunction(
         lambda: timezone.now().date() + timedelta(days=365)
     )
-    status = DocumentStatus.ACTIVE
+    status = "ACTIVE"
 
     file = factory.LazyFunction(
         lambda: SimpleUploadedFile(

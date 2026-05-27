@@ -162,10 +162,10 @@ AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
 AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="eu-central-1")
 AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 AWS_S3_OBJECT_PARAMETERS = {
-    "CacheControl": "max-age=86400",  # 24 часа
+    "CacheControl": "max-age=86400",  # 24 hours
 }
 
-# Public media files (если нужно публичные)
+# Public media files (if public is needed)
 AWS_QUERYSTRING_AUTH = False
 AWS_S3_FILE_OVERWRITE = False
 
