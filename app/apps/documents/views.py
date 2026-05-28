@@ -1,8 +1,8 @@
 # apps/documents/views.py
 
-from apps.documents.serializers.document import DocumentUploadSerializer
 from apps.documents.services.document_services import DocumentService
 from rest_framework import mixins, permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,6 +11,8 @@ from app.apps.documents.models import DocumentRequest, DocumentType
 from app.apps.documents.serializers import (
     AnonymousDocumentUploadSerializer,
     DocumentRequestCreateSerializer,
+    DocumentRequestSerializer,
+    DocumentUploadSerializer,
     FolderListSerializer,
 )
 
@@ -55,7 +57,15 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     """
 
     queryset = DocumentRequest.objects.all()
-    serializer_class = DocumentRequestCreateSerializer
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return DocumentRequestCreateSerializer
+        return DocumentRequestSerializer
+
+    def perform_destroy(self, instance):
+        # Instead of the standard instance.delete() we call our service
+        DocumentService.delete_document(instance)
 
     def create(self, request, *args, **kwargs):
         """POST /api/documents/requests/"""
@@ -70,15 +80,25 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
             recipient_email=validated_data["recipient_email"],
             document_type=validated_data["document_type"],
         )
+        response_serializer = DocumentRequestSerializer(doc_request)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=["post"], url_path="resend", url_name="resend")
+    def resend_notification(self, request, pk=None):
+        """POST /api/documents/requests/{id}/resend/"""
+        doc_request = self.get_object()
+        DocumentService.resend_document_request(doc_request=doc_request)
         return Response(
-            {
-                "message": "Document request created successfully.",
-                "id": doc_request.id,
-                "token": doc_request.token,
-                "expires_at": doc_request.expires_at,
-            },
-            status=status.HTTP_201_CREATED,
+            {"detail": "Notification resent successfully."}, status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=["post"], url_path="cancel", url_name="cancel")
+    def cancel_request(self, request, pk=None):
+        """POST /api/documents/requests/{id}/cancel/"""
+        doc_request = self.get_object()
+        DocumentService.cancel_document_request(doc_request=doc_request)
+        return Response(
+            {"detail": "Document request has been canceled."}, status=status.HTTP_200_OK
         )
 
 

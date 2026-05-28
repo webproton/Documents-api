@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from app.apps.documents.models import Document, DocumentRequest
+from app.apps.documents.tasks import send_document_request_email_task
 
 
 class DocumentService:
@@ -123,5 +124,104 @@ class DocumentService:
             document_type=document_type,
             expires_at=expiration_deadline,
         )
+        # trigger Celery
+        send_document_request_email_task.delay(doc_request.id)
 
         return doc_request
+
+    @staticmethod
+    def cancel_document_request(*, doc_request: DocumentRequest) -> DocumentRequest:
+        """
+        Cancels a document request, setting its status to CANCELLED.
+        Prevents cancellation if the request has already been fulfilled or has expired.
+        """
+        if doc_request.status != "PENDING":
+            raise ValidationError(
+                {"detail": f"Cannot cancel a request with status {doc_request.status}."}
+            )
+
+        doc_request.status = "CANCELED"
+        doc_request.save(update_fields=["status"])
+        return doc_request
+
+    @staticmethod
+    def resend_document_request(*, doc_request: DocumentRequest) -> DocumentRequest:
+        """
+        Resends the notification if 1 hour has passed since the last sending.
+        """
+        # Checking if the request is in an active state
+        if doc_request.status != "PENDING":
+            raise ValidationError(
+                {"detail": "You can only resend notifications for pending requests."}
+            )
+
+        now = timezone.now()
+
+        # Checking the 1 hour limit
+        if doc_request.last_sent_at and now < doc_request.last_sent_at + timedelta(
+            hours=1
+        ):
+            time_left = (doc_request.last_sent_at + timedelta(hours=1)) - now
+            minutes_left = int(time_left.total_seconds() // 60)
+            raise ValidationError(
+                {
+                    "detail": (
+                        "You can resend notification once per hour. "
+                        f"Please wait {minutes_left} more minutes."
+                    )
+                }
+            )
+
+        # If the check is passed, we update the last send time
+        doc_request.last_sent_at = now
+        doc_request.save(update_fields=["last_sent_at"])
+
+        # trigger Celery
+        send_document_request_email_task.delay(doc_request.id)
+
+        return doc_request
+
+    @staticmethod
+    def expire_prolonged_requests() -> int:
+        """
+        Finds all PENDING requests that have expired and
+        sets their status to EXPIRED.
+        Returns the number of updated records.
+        """
+        now = timezone.now()
+
+        # We update all expired requests in one transaction.
+        updated_count = DocumentRequest.objects.filter(
+            status="PENDING", expires_at__lt=now
+        ).update(status="EXPIRED")
+
+        return updated_count
+
+    @staticmethod
+    @transaction.atomic
+    def delete_document(document: Document) -> None:
+        """
+        Deletes a document. If the document being deleted was ACTIVE,
+        finds the latest REPLACED version for this user and type,
+        and restores its status to ACTIVE.
+        """
+        was_active = document.status == "ACTIVE"
+        user = document.user
+        doc_type = document.document_type
+
+        # First, we delete the document itself.
+        document.delete()
+
+        # If it was active, we look for a replacement inside the same "folder"
+        if was_active:
+            latest_replaced = (
+                Document.objects.filter(
+                    user=user, document_type=doc_type, status="REPLACED"
+                )
+                .order_by("-created")
+                .first()
+            )
+
+            if latest_replaced:
+                latest_replaced.status = "ACTIVE"
+                latest_replaced.save(update_fields=["status"])

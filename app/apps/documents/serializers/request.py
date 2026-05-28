@@ -19,3 +19,26 @@ class DocumentRequestCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentRequest
         fields = ["recipient_email", "document_type"]
+
+
+class DocumentRequestSerializer(serializers.ModelSerializer):
+    """Сериализатор для ОТОБРАЖЕНИЯ полных данных запроса (отдается наружу)"""
+
+    document_type_name = serializers.CharField(
+        source="document_type.name", read_only=True
+    )
+
+    class Meta:
+        model = DocumentRequest
+        fields = [
+            "id",
+            "recipient_email",
+            "document_type",
+            "document_type_name",
+            "token",
+            "status",
+            "created",
+            "expires_at",
+            "last_sent_at",
+        ]
+        read_only_fields = fields
