@@ -175,7 +175,7 @@ def test_authenticated_user_can_create_document_request(api_client, user):
     """
     api_client.force_authenticate(user=user)
     doc_type = DocumentTypeFactory(name="Tax Return")
-    url = reverse("apps.documents:request-create")
+    url = reverse("apps.documents:document-request-list")
 
     payload = {"recipient_email": "client@example.com", "document_type": doc_type.id}
 
@@ -198,7 +198,7 @@ def test_unauthenticated_user_cannot_create_document_request(api_client):
     """
     Verify that anonymous users are blocked from creating document requests.
     """
-    url = reverse("apps.documents:request-create")
+    url = reverse("apps.documents:document-request-list")
     payload = {"recipient_email": "client@example.com", "document_type": 1}
 
     response = api_client.post(url, data=payload, format="json")

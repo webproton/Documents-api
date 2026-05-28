@@ -3,7 +3,7 @@
 from apps.documents.views import (
     AnonymousDocumentUploadAPIView,
     DocumentFolderViewSet,
-    DocumentRequestAPIView,
+    DocumentRequestViewSet,
     DocumentUploadAPIView,
 )
 from django.urls import include, path
@@ -14,10 +14,10 @@ app_name = "apps.documents"
 # Initialize DefaultRouter for ViewSets
 router = DefaultRouter()
 router.register(r"folders", DocumentFolderViewSet, basename="folder")
+router.register(r"requests", DocumentRequestViewSet, basename="document-request")
 
 urlpatterns = [
     path("upload/", DocumentUploadAPIView.as_view(), name="upload"),
-    path("requests/", DocumentRequestAPIView.as_view(), name="request-create"),
     # Anon endpoint with token
     path(
         "upload/<uuid:token>/",

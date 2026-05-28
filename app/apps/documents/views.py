@@ -2,12 +2,12 @@
 
 from apps.documents.serializers.document import DocumentUploadSerializer
 from apps.documents.services.document_services import DocumentService
-from rest_framework import permissions, status, viewsets
+from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.apps.documents.models import DocumentType
+from app.apps.documents.models import DocumentRequest, DocumentType
 from app.apps.documents.serializers import (
     AnonymousDocumentUploadSerializer,
     DocumentRequestCreateSerializer,
@@ -48,13 +48,17 @@ class AnonymousDocumentUploadAPIView(APIView):
         )
 
 
-class DocumentRequestAPIView(APIView):
+class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     """
-    API Endpoint allowing authenticated users to request documents
-    from non-authenticated third parties via secure tokens.
+    ViewSet for creating document requests.
+    Uses GenericViewSet + CreateModelMixin to expose EXCLUSIVELY the POST method.
     """
 
-    def post(self, request, *args, **kwargs):
+    queryset = DocumentRequest.objects.all()
+    serializer_class = DocumentRequestCreateSerializer
+
+    def create(self, request, *args, **kwargs):
+        """POST /api/documents/requests/"""
         serializer = DocumentRequestCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
