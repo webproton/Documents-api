@@ -1,13 +1,13 @@
 # apps/documents/views.py
 
 from apps.documents.serializers.document import DocumentUploadSerializer
-from apps.documents.services.document_services import DocumentService
+from django.db.models import Prefetch
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.apps.documents.models import DocumentRequest, DocumentType
+from app.apps.documents.models import Document, DocumentRequest, DocumentType
 from app.apps.documents.serializers import (
     AnonymousDocumentUploadSerializer,
     DocumentRequestCreateSerializer,
@@ -25,18 +25,13 @@ class AnonymousDocumentUploadAPIView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, token, *args, **kwargs):
-        serializer = AnonymousDocumentUploadSerializer(data=request.data)
+        serializer = AnonymousDocumentUploadSerializer(
+            data=request.data, context={"token": token}
+        )
         serializer.is_valid(raise_exception=True)
 
-        validated_data = serializer.validated_data
-
         # Pass token extracted from the URL path down to the service layer
-        document = DocumentService.handle_anonymous_upload(
-            token=token,
-            file=validated_data["file"],
-            name=validated_data.get("name"),
-            expiration_date=validated_data.get("expiration_date"),
-        )
+        document = serializer.save()
 
         return Response(
             {
@@ -52,6 +47,7 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     """
     ViewSet for creating document requests.
     Uses GenericViewSet + CreateModelMixin to expose EXCLUSIVELY the POST method.
+    IsAuthenticated is used by default in the settings
     """
 
     queryset = DocumentRequest.objects.all()
@@ -59,17 +55,10 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
 
     def create(self, request, *args, **kwargs):
         """POST /api/documents/requests/"""
-        serializer = DocumentRequestCreateSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        validated_data = serializer.validated_data
-
-        # Delegate token generation and database execution to the Service Layer
-        doc_request = DocumentService.create_document_request(
-            user=request.user,
-            recipient_email=validated_data["recipient_email"],
-            document_type=validated_data["document_type"],
-        )
+        doc_request = serializer.save()
 
         return Response(
             {
@@ -86,40 +75,43 @@ class DocumentFolderViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API endpoint that allows folders (DocumentTypes) to be viewed.
     Automatically provides 'list' and 'retrieve' actions.
+    IsAuthenticated is used by default in the settings
     """
 
-    queryset = DocumentType.objects.all().order_by("name")
     serializer_class = FolderListSerializer
+
+    def get_queryset(self):
+
+        # prefetch_related with an explicit Queryset perfectly
+        # filters the current user's documents with just one additional query.
+        return DocumentType.objects.prefetch_related(
+            Prefetch(
+                "documents",
+                queryset=Document.objects.filter(user=self.request.user).order_by(
+                    "-created"
+                ),
+            )
+        ).order_by("name")
 
 
 class DocumentUploadAPIView(APIView):
     """
     API Endpoint for authenticated users to upload documents.
     Delegates file processing and version control to DocumentService.
+    IsAuthenticated is used by default in the settings
     """
 
     # Enable DRF to parse multi-part form data (required for file uploads)
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, *args, **kwargs):
-        # Step 1: Pass request data into the serializer
-        #  for structural and format validation
-        serializer = DocumentUploadSerializer(data=request.data)
+        serializer = DocumentUploadSerializer(
+            data=request.data, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
 
-        validated_data = serializer.validated_data
+        document = serializer.save()
 
-        # Step 2: Delegate the business action
-        # (creation & version replacement) to the Service Layer
-        document = DocumentService.create_document(
-            user=request.user,
-            name=validated_data["name"],
-            file=validated_data["file"],
-            document_type=validated_data["document_type"],
-            expiration_date=validated_data.get("expiration_date"),
-        )
-
-        # Step 3: Return a clean, successful production response
         return Response(
             {
                 "message": "Document uploaded successfully.",

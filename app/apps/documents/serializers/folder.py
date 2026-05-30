@@ -21,7 +21,7 @@ class FolderListSerializer(serializers.ModelSerializer):
     only the requesting user's documents.
     """
 
-    documents = serializers.SerializerMethodField()
+    documents = FolderDocumentSerializer(many=True, read_only=True)
 
     class Meta:
         model = DocumentType
