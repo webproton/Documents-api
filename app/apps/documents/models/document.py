@@ -3,6 +3,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.utils.text import get_valid_filename
 from django.utils.translation import gettext_lazy as _
 from model_utils import Choices
 from model_utils.models import StatusModel, TimeStampedModel
@@ -11,9 +12,10 @@ from model_utils.models import StatusModel, TimeStampedModel
 def document_upload_to(instance, filename):
     """generate a secure path for S3
     uses uuid to uniq. and protect user privacy"""
-    ext = filename.split(".")[-1]
+    filename = get_valid_filename(filename)
     return (
-        f"documents/{instance.user_id}/{instance.document_type_id}/{uuid.uuid4()}.{ext}"
+        f"documents/{instance.user_id}/{instance.document_type_id}/"
+        f"{uuid.uuid4()}/{filename}"
     )
 
 
