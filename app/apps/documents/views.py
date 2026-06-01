@@ -2,7 +2,7 @@
 
 from apps.documents.serializers.document import DocumentUploadSerializer
 from django.db.models import Prefetch
-from rest_framework import mixins, permissions, status, viewsets
+from rest_framework import generics, mixins, permissions, status, viewsets
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -15,7 +15,7 @@ from app.apps.documents.serializers import (
 )
 
 
-class AnonymousDocumentUploadAPIView(APIView):
+class AnonymousDocumentUploadAPIView(generics.GenericAPIView):
     """
     Public endpoint for external users to upload documents safely
     using a unique URL token. Does not require authentication headers.
@@ -24,23 +24,27 @@ class AnonymousDocumentUploadAPIView(APIView):
     permission_classes = [permissions.AllowAny]
     parser_classes = [MultiPartParser, FormParser]
 
+    lookup_field = "token"
+    # which field to search for the request object
+    queryset = DocumentRequest.objects.select_related("document_type", "requester")
+    serializer_class = AnonymousDocumentUploadSerializer
+
     def post(self, request, token, *args, **kwargs):
-        serializer = AnonymousDocumentUploadSerializer(
-            data=request.data, context={"token": token}
-        )
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        serializer.save()
 
-        # Pass token extracted from the URL path down to the service layer
-        document = serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-        return Response(
-            {
-                "message": "Document uploaded successfully via secure token.",
-                "document_id": document.id,
-                "status": document.status,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+    def get_serializer_context(self):
+        """
+        pass  found DocumentRequest object to serializer.
+        self.get_object() uses lookup_field="token" , return  404
+        if token in the url is invalid
+        """
+        context = super().get_serializer_context()
+        context["doc_request"] = self.get_object()
+        return context
 
 
 class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
@@ -57,18 +61,9 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
         """POST /api/documents/requests/"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        serializer.save()
 
-        doc_request = serializer.save()
-
-        return Response(
-            {
-                "message": "Document request created successfully.",
-                "id": doc_request.id,
-                "token": doc_request.token,
-                "expires_at": doc_request.expires_at,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class DocumentFolderViewSet(viewsets.ReadOnlyModelViewSet):
@@ -109,14 +104,6 @@ class DocumentUploadAPIView(APIView):
             data=request.data, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
+        serializer.save()
 
-        document = serializer.save()
-
-        return Response(
-            {
-                "message": "Document uploaded successfully.",
-                "document_id": document.id,
-                "status": document.status,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

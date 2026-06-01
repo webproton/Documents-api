@@ -26,15 +26,3 @@ class FolderListSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentType
         fields = ["id", "name", "description", "documents"]
-
-    def get_documents(self, obj):
-        # Access the authenticated user from the request context
-        user = self.context["request"].user
-
-        # Filter documents: must belong
-        # to this user and match this folder's document type
-        user_documents = Document.objects.filter(user=user, document_type=obj).order_by(
-            "-created"
-        )
-
-        return FolderDocumentSerializer(user_documents, many=True).data

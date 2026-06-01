@@ -40,7 +40,9 @@ class Document(TimeStampedModel, StatusModel):
 
     document_type = models.ForeignKey(
         "documents.DocumentType",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
         verbose_name=_("Document type"),
         related_name="documents",
     )

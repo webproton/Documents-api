@@ -24,7 +24,8 @@ class DocumentUploadSerializer(
 
     class Meta:
         model = Document
-        fields = ["name", "file", "document_type", "expiration_date"]
+        fields = ["id", "status", "name", "file", "document_type", "expiration_date"]
+        read_only_fields = ["id", "status"]
 
     def validate(self, attrs):
         expiration_date = attrs.get("expiration_date")

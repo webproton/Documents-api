@@ -3,7 +3,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from app.apps.documents.models import Document, DocumentRequest
+from app.apps.documents.models import Document
 from app.apps.documents.serializers.mixins import DocumentFileValidationMixin
 
 
@@ -19,19 +19,11 @@ class AnonymousDocumentUploadSerializer(
 
     class Meta:
         model = Document
-        fields = ["name", "file", "expiration_date"]
+        fields = ["id", "name", "file", "status", "expiration_date"]
+        read_only_fields = ["id", "status"]
 
     def validate(self, attrs):
-        token = self.context.get("token")
-        try:
-            # Fetch the request by token or throw 400 validation error
-            doc_request = DocumentRequest.objects.select_related(
-                "document_type", "requester"
-            ).get(token=token)
-        except (DocumentRequest.DoesNotExist, ValueError):
-            raise serializers.ValidationError(
-                {"token": "Invalid or non-existent secure token."}
-            )
+        doc_request = self.context.get("doc_request")
 
         # Check if the 30-day link has already expired
         if doc_request.expires_at < timezone.now():
@@ -49,36 +41,34 @@ class AnonymousDocumentUploadSerializer(
         self.doc_request = doc_request
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
-        with transaction.atomic():
-            # lock the query string for updating
-            doc_request = DocumentRequest.objects.select_for_update().get(
-                id=self.doc_request.id
-            )
+        # lock the query string for updating
+        doc_request = self.doc_request
 
-            # Standard versioning: update previous
-            # documents of the requester to REPLACED
-            Document.objects.select_for_update().filter(
-                user=doc_request.requester,
-                document_type=doc_request.document_type,
-                status="ACTIVE",
-            ).update(status="REPLACED")
+        # Standard versioning: update previous
+        # documents of the requester to REPLACED
+        Document.objects.select_for_update().filter(
+            user=doc_request.requester,
+            document_type=doc_request.document_type,
+            status="ACTIVE",
+        ).update(status="REPLACED")
 
-            # Set name
-            name = validated_data.get("name") or validated_data["file"].name
+        # Set name
+        name = validated_data.get("name") or validated_data["file"].name
 
-            # Create the incoming document linked to the request owner
-            new_document = Document.objects.create(
-                user=doc_request.requester,
-                name=name,
-                file=validated_data["file"],
-                document_type=doc_request.document_type,
-                expiration_date=validated_data.get("expiration_date"),
-                status="ACTIVE",
-            )
-            # Change  the request status  to COMPLETED
-            # close the request
-            doc_request.status = "COMPLETED"
-            doc_request.save(update_fields=["status"])
+        # Create the incoming document linked to the request owner
+        new_document = Document.objects.create(
+            user=doc_request.requester,
+            name=name,
+            file=validated_data["file"],
+            document_type=doc_request.document_type,
+            expiration_date=validated_data.get("expiration_date"),
+            status="ACTIVE",
+        )
+        # Change  the request status  to COMPLETED
+        # close the request
+        doc_request.status = "COMPLETED"
+        doc_request.save(update_fields=["status"])
 
-            return new_document
+        return new_document

@@ -65,7 +65,7 @@ def test_upload_new_version_replaces_old_document_status(api_client, user):
     old_doc.refresh_from_db()
     assert old_doc.status == "REPLACED"
 
-    new_doc_id = response.data["document_id"]
+    new_doc_id = response.data["id"]
     assert Document.objects.get(id=new_doc_id).status == "ACTIVE"
 
 
@@ -238,7 +238,7 @@ def test_anonymous_user_can_upload_document_via_valid_token(api_client, user):
     assert doc_request.status == "COMPLETED"
 
     # Confirm Document creation and ownership linkage
-    uploaded_doc = Document.objects.get(id=response.data["document_id"])
+    uploaded_doc = Document.objects.get(id=response.data["id"])
     assert uploaded_doc.user == user
     assert uploaded_doc.document_type == doc_type
 
@@ -311,5 +311,5 @@ def test_anonymous_upload_fails_with_invalid_token(api_client):
     payload = {"file": pdf_file}
     response = api_client.post(url, data=payload, format="multipart")
 
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "token" in response.data["errors"]
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert "detail" in response.data["errors"]
