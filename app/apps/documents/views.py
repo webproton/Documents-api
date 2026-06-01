@@ -57,14 +57,6 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     queryset = DocumentRequest.objects.all()
     serializer_class = DocumentRequestCreateSerializer
 
-    def create(self, request, *args, **kwargs):
-        """POST /api/documents/requests/"""
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
 
 class DocumentFolderViewSet(viewsets.ReadOnlyModelViewSet):
     """
