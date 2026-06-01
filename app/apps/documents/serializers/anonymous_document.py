@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from app.apps.documents.models import Document
+from app.apps.documents.models.document_request import DocumentRequest
 from app.apps.documents.serializers.mixins import DocumentFileValidationMixin
 
 
@@ -31,7 +32,7 @@ class AnonymousDocumentUploadSerializer(
                 {"token": "This secure upload link has expired."}
             )
         # Check status requests (should be PENDING only)
-        if doc_request.status != "PENDING":
+        if doc_request.status != DocumentRequest.STATUS.PENDING:
             raise serializers.ValidationError(
                 {"token": f"This request is already {doc_request.status.lower()}."}
             )
@@ -51,8 +52,8 @@ class AnonymousDocumentUploadSerializer(
         Document.objects.select_for_update().filter(
             user=doc_request.requester,
             document_type=doc_request.document_type,
-            status="ACTIVE",
-        ).update(status="REPLACED")
+            status=Document.STATUS.ACTIVE,
+        ).update(status=Document.STATUS.REPLACED)
 
         # Set name
         name = validated_data.get("name") or validated_data["file"].name
@@ -64,11 +65,11 @@ class AnonymousDocumentUploadSerializer(
             file=validated_data["file"],
             document_type=doc_request.document_type,
             expiration_date=validated_data.get("expiration_date"),
-            status="ACTIVE",
+            status=Document.STATUS.ACTIVE,
         )
         # Change  the request status  to COMPLETED
         # close the request
-        doc_request.status = "COMPLETED"
+        doc_request.status = DocumentRequest.STATUS.COMPLETED
         doc_request.save(update_fields=["status"])
 
         return new_document

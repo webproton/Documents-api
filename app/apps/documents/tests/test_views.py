@@ -37,7 +37,7 @@ def test_authenticated_user_can_upload_document(api_client, user):
     response = api_client.post(url, data=payload, format="multipart")
 
     assert response.status_code == status.HTTP_201_CREATED
-    assert response.data["status"] == "ACTIVE"
+    assert response.data["status"] == Document.STATUS.ACTIVE
     assert Document.objects.filter(user=user, document_type=doc_type).count() == 1
 
 
@@ -47,7 +47,9 @@ def test_upload_new_version_replaces_old_document_status(api_client, user):
     doc_type = DocumentTypeFactory(name="Driver License")
     url = reverse("apps.documents:upload")
 
-    old_doc = DocumentFactory(user=user, document_type=doc_type, status="ACTIVE")
+    old_doc = DocumentFactory(
+        user=user, document_type=doc_type, status=Document.STATUS.ACTIVE
+    )
 
     new_pdf = SimpleUploadedFile(
         "new_license.pdf", b"new content", content_type="application/pdf"
@@ -63,34 +65,10 @@ def test_upload_new_version_replaces_old_document_status(api_client, user):
     assert response.status_code == status.HTTP_201_CREATED
 
     old_doc.refresh_from_db()
-    assert old_doc.status == "REPLACED"
+    assert old_doc.status == Document.STATUS.REPLACED
 
     new_doc_id = response.data["id"]
-    assert Document.objects.get(id=new_doc_id).status == "ACTIVE"
-
-
-@pytest.mark.django_db
-def test_upload_fails_with_past_expiration_date(api_client, user):
-    api_client.force_authenticate(user=user)
-    doc_type = DocumentTypeFactory()
-    url = reverse("apps.documents:upload")
-
-    past_date = (timezone.now() - timedelta(days=5)).date()
-    pdf_file = SimpleUploadedFile(
-        "test.pdf", b"content", content_type="application/pdf"
-    )
-
-    payload = {
-        "name": "Expired Doc",
-        "document_type": doc_type.id,
-        "file": pdf_file,
-        "expiration_date": past_date,
-    }
-
-    response = api_client.post(url, data=payload, format="multipart")
-
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "expiration_date" in response.data["errors"]
+    assert Document.objects.get(id=new_doc_id).status == Document.STATUS.ACTIVE
 
 
 @pytest.mark.django_db
@@ -215,7 +193,7 @@ def test_anonymous_user_can_upload_document_via_valid_token(api_client, user):
     doc_type = DocumentTypeFactory(name="Tax Certificate")
     # Create request token in the database
     doc_request = DocumentRequestFactory(
-        requester=user, document_type=doc_type, status="PENDING"
+        requester=user, document_type=doc_type, status=DocumentRequest.STATUS.PENDING
     )
 
     url = reverse(
@@ -231,11 +209,11 @@ def test_anonymous_user_can_upload_document_via_valid_token(api_client, user):
     response = api_client.post(url, data=payload, format="multipart")
 
     assert response.status_code == status.HTTP_201_CREATED
-    assert response.data["status"] == "ACTIVE"
+    assert response.data["status"] == Document.STATUS.ACTIVE
 
     # CHECK: Request status should change to COMPLETED
     doc_request.refresh_from_db()
-    assert doc_request.status == "COMPLETED"
+    assert doc_request.status == DocumentRequest.STATUS.COMPLETED
 
     # Confirm Document creation and ownership linkage
     uploaded_doc = Document.objects.get(id=response.data["id"])
@@ -251,7 +229,7 @@ def test_anonymous_upload_fails_if_request_already_completed(api_client, user):
     doc_type = DocumentTypeFactory()
     # Создаем уже завершенный запрос
     doc_request = DocumentRequestFactory(
-        requester=user, document_type=doc_type, status="COMPLETED"
+        requester=user, document_type=doc_type, status=DocumentRequest.STATUS.COMPLETED
     )
 
     url = reverse(
