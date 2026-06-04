@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.db.models import Prefetch
 from django.utils import timezone
-from rest_framework import generics, mixins, permissions, status, viewsets
+from rest_framework import generics, mixins, permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
@@ -14,6 +14,7 @@ from app.apps.documents.serializers import (
     AnonymousDocumentUploadSerializer,
     DocumentRequestCreateSerializer,
     DocumentRequestSerializer,
+    DocumentUpdateSerializer,
     DocumentUploadSerializer,
     FolderListSerializer,
 )
@@ -74,9 +75,8 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
             doc_request.last_sent_at
             and timezone.now() - doc_request.last_sent_at < timedelta(hours=1)
         ):
-            return Response(
-                {"detail": "You can resend this request at most once per hour."},
-                status=status.HTTP_400_BAD_REQUEST,
+            raise serializers.ValidationError(
+                {"detail": "You can resend notification once per hour."}
             )
 
         send_document_request_email_task.delay(doc_request.id)
@@ -94,13 +94,8 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
         doc_request = self.get_object()
 
         if doc_request.status != DocumentRequest.STATUS.PENDING:
-            return Response(
-                {
-                    "detail": (
-                        "Cannot cancel a request with " f"status {doc_request.status}."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise serializers.ValidationError(
+                {"detail": f"Cannot cancel a request with status {doc_request.status}."}
             )
 
         doc_request.status = DocumentRequest.STATUS.CANCELED
@@ -152,3 +147,21 @@ class DocumentUploadAPIView(APIView):
         serializer.save()
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class DocumentViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    ViewSet for viewing, updating, and deleting specific documents.
+    Only the owner can access their documents.
+    """
+
+    serializer_class = DocumentUpdateSerializer
+
+    def get_queryset(self):
+        # Strict isolation: the user sees and manages ONLY their own documents
+        return Document.objects.filter(user=self.request.user)

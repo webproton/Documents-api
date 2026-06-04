@@ -7,7 +7,7 @@ from django.utils import timezone
 from rest_framework import status
 
 from app.apps.documents.models import Document
-from app.apps.documents.services.document_services import DocumentService
+from app.apps.documents.tasks import send_document_request_email_task
 from app.apps.documents.tests.factories import (
     DocumentFactory,
     DocumentRequestFactory,
@@ -29,11 +29,8 @@ class TestDocumentRequestNotifications:
         self.client.force_authenticate(user=self.user)
         self.document_type = DocumentTypeFactory()
 
-    @patch(
-        "app.apps.documents.services.document_services."
-        "send_document_request_email_task.delay"
-    )
-    def test_create_document_request_triggers_celery(self, mock_celery_task):
+    @pytest.mark.django_db(transaction=True)
+    def test_create_document_request_triggers_celery(self):
         """
         We're verifying that when a request is successfully created via the API,
         the Celery background task is automatically called.
@@ -44,15 +41,16 @@ class TestDocumentRequestNotifications:
             "document_type": self.document_type.id,
         }
 
-        response = self.client.post(url, data=data, format="json")
+        with patch.object(send_document_request_email_task, "delay") as mock_delay:
+            response = self.client.post(url, data=data, format="json")
 
         assert response.status_code == status.HTTP_201_CREATED
         # We check that the Celery task was called exactly once.
-        mock_celery_task.assert_called_once()
+        mock_delay.assert_called_once()
 
         # We check that the ID of the created request was passed to the task.
         created_request_id = response.data["id"]
-        mock_celery_task.assert_called_with(created_request_id)
+        mock_delay.assert_called_with(created_request_id)
 
     def test_cancel_document_request_success(self):
         """
@@ -92,10 +90,7 @@ class TestDocumentRequestNotifications:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Cannot cancel a request" in response.data["errors"]["detail"]
 
-    @patch(
-        "app.apps.documents.services.document_services."
-        "send_document_request_email_task.delay"
-    )
+    @patch.object(send_document_request_email_task, "delay")
     def test_resend_notification_success_after_one_hour(self, mock_celery_task):
         """
         A resend is successful if more than 1 hour has passed since the last send.
@@ -118,10 +113,10 @@ class TestDocumentRequestNotifications:
         assert response.status_code == status.HTTP_200_OK
         assert response.data["detail"] == "Notification resent successfully."
 
-        # Проверяем, что Celery пиннули на повторную отправку
+        # checking Celery to resend.
         mock_celery_task.assert_called_once_with(doc_request.id)
 
-        # Проверяем, что время отправки обновилось на текущее
+        # check that the sending time has been updated to the current one
         doc_request.refresh_from_db()
         assert doc_request.last_sent_at > two_hours_ago
 
@@ -173,12 +168,12 @@ class TestDocumentRequestNotifications:
         )
 
         # call the service method (which will trigger Celery Beat)
-        from app.apps.documents.services.document_services import DocumentService
+        from app.apps.documents.tasks import auto_expire_document_requests_task
 
-        updated_count = DocumentService.expire_prolonged_requests()
+        result_message = auto_expire_document_requests_task()
 
         # check that exactly 1 record has been updated
-        assert updated_count == 1
+        assert result_message == "Successfully expired 1 document requests."
 
         # Checking changes in the database
         expired_request.refresh_from_db()
@@ -195,8 +190,8 @@ class TestDocumentRequestNotifications:
         replaced_doc = DocumentFactory(
             user=self.user, document_type=self.document_type, status="REPLACED"
         )
-
-        DocumentService.delete_document(replaced_doc)
+        # call the model's .delete() method
+        replaced_doc.delete()
 
         # We check that the active one remains in place
         # and the old one has been deleted.
@@ -218,7 +213,7 @@ class TestDocumentRequestNotifications:
         )
 
         # Deleting the active document
-        DocumentService.delete_document(active_doc)
+        active_doc.delete()
 
         # Check that active_doc has been deleted
         assert not Document.objects.filter(id=active_doc.id).exists()

@@ -80,3 +80,5 @@ planFinger.txt
 nginxwork.txt
 shema.txt
 .DS_Store
+
+celerybeat-schedule*
