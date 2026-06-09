@@ -39,6 +39,10 @@ urlpatterns = [
         "api/documents/",
         include("app.apps.documents.urls", namespace="app.apps.documents"),
     ),
+    path(
+        "api/notifications/",
+        include("app.apps.notifications.urls", namespace="notifications"),
+    ),
     re_path(r"^swagger/$", schema_view.with_ui("swagger", cache_timeout=0)),
     re_path(r"^redoc/$", schema_view.with_ui("redoc", cache_timeout=0)),
 ]
