@@ -60,7 +60,9 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     IsAuthenticated is used by default in the settings
     """
 
-    queryset = DocumentRequest.objects.all()
+    def get_queryset(self):
+        """only the current user"""
+        return DocumentRequest.objects.filter(user=self.request.user)
 
     def get_serializer_class(self):
         if self.action == "create":
