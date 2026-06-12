@@ -18,6 +18,6 @@ app.autodiscover_tasks()
 app.conf.beat_schedule = {
     "auto-expire-requests-every-day": {
         "task": "app.apps.documents.tasks.auto_expire_document_requests_task",
-        "schedule": crontab(hour=0, minute=0),  # Каждую полночь
+        "schedule": crontab(hour=0, minute=0),  # Every midnight
     },
 }

@@ -34,7 +34,7 @@ class DocumentUploadSerializer(
         user = self.context["request"].user
         document_type = validated_data["document_type"]
         # Capturing and replacing old versions
-        Document.objects.select_for_update().filter(
+        Document.objects.filter(
             user=user, document_type=document_type, status=Document.STATUS.ACTIVE
         ).update(status=Document.STATUS.REPLACED)
 
@@ -59,4 +59,4 @@ class DocumentUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = ["id", "name", "status", "document_type", "expiration_date", "file"]
-        read_only_fields = ["id", "status", "document_type", "file"]
+        read_only_fields = ["id", "status", "document_type"]
