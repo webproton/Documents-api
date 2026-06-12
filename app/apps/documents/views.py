@@ -1,8 +1,10 @@
 # apps/documents/views.py
+from datetime import timedelta
 
-from apps.documents.serializers.document import DocumentUploadSerializer
 from django.db.models import Prefetch
-from rest_framework import generics, mixins, permissions, status, viewsets
+from django.utils import timezone
+from rest_framework import generics, mixins, permissions, serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,8 +13,12 @@ from app.apps.documents.models import Document, DocumentRequest, DocumentType
 from app.apps.documents.serializers import (
     AnonymousDocumentUploadSerializer,
     DocumentRequestCreateSerializer,
+    DocumentRequestSerializer,
+    DocumentUpdateSerializer,
+    DocumentUploadSerializer,
     FolderListSerializer,
 )
+from app.apps.documents.tasks import send_document_request_email_task
 
 
 class AnonymousDocumentUploadAPIView(generics.GenericAPIView):
@@ -54,8 +60,52 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     IsAuthenticated is used by default in the settings
     """
 
-    queryset = DocumentRequest.objects.all()
-    serializer_class = DocumentRequestCreateSerializer
+    def get_queryset(self):
+        """only the current user"""
+        return DocumentRequest.objects.filter(user=self.request.user)
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return DocumentRequestCreateSerializer
+        return DocumentRequestSerializer
+
+    @action(detail=True, methods=["post"], url_path="resend", url_name="resend")
+    def resend_notification(self, request, pk=None):
+        """POST /api/documents/requests/{id}/resend/"""
+        doc_request = self.get_object()
+        if (
+            doc_request.last_sent_at
+            and timezone.now() - doc_request.last_sent_at < timedelta(hours=1)
+        ):
+            raise serializers.ValidationError(
+                {"detail": "You can resend notification once per hour."}
+            )
+
+        send_document_request_email_task.delay(doc_request.id)
+
+        doc_request.last_sent_at = timezone.now()
+        doc_request.save(update_fields=["last_sent_at"])
+
+        return Response(
+            {"detail": "Notification resent successfully."}, status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=["post"], url_path="cancel", url_name="cancel")
+    def cancel_request(self, request, pk=None):
+        """POST /api/documents/requests/{id}/cancel/"""
+        doc_request = self.get_object()
+
+        if doc_request.status != DocumentRequest.STATUS.PENDING:
+            raise serializers.ValidationError(
+                {"detail": f"Cannot cancel a request with status {doc_request.status}."}
+            )
+
+        doc_request.status = DocumentRequest.STATUS.CANCELED
+        doc_request.save(update_fields=["status"])
+
+        return Response(
+            {"detail": "Document request has been canceled."}, status=status.HTTP_200_OK
+        )
 
 
 class DocumentFolderViewSet(viewsets.ReadOnlyModelViewSet):
@@ -99,3 +149,21 @@ class DocumentUploadAPIView(APIView):
         serializer.save()
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class DocumentViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    ViewSet for viewing, updating, and deleting specific documents.
+    Only the owner can access their documents.
+    """
+
+    serializer_class = DocumentUpdateSerializer
+
+    def get_queryset(self):
+        # Strict isolation: the user sees and manages ONLY their own documents
+        return Document.objects.filter(user=self.request.user)

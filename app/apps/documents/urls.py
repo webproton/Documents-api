@@ -5,6 +5,7 @@ from apps.documents.views import (
     DocumentFolderViewSet,
     DocumentRequestViewSet,
     DocumentUploadAPIView,
+    DocumentViewSet,
 )
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
@@ -15,6 +16,7 @@ app_name = "apps.documents"
 router = DefaultRouter()
 router.register(r"folders", DocumentFolderViewSet, basename="folder")
 router.register(r"requests", DocumentRequestViewSet, basename="document-request")
+router.register(r"documents", DocumentViewSet, basename="document")
 
 urlpatterns = [
     path("upload/", DocumentUploadAPIView.as_view(), name="upload"),

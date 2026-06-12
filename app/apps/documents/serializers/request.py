@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -27,10 +28,44 @@ class DocumentRequestCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user = self.context["request"].user
+        now = timezone.now()
         expiration_deadline = timezone.now() + timedelta(
             days=int(DOCUMENT_REQUEST_EXPIRATION_DAYS)
         )
 
-        return DocumentRequest.objects.create(
-            requester=user, expires_at=expiration_deadline, **validated_data
+        instance = DocumentRequest.objects.create(
+            requester=user,
+            expires_at=expiration_deadline,
+            last_sent_at=now,
+            **validated_data,
         )
+
+        from app.apps.documents.tasks import send_document_request_email_task
+
+        transaction.on_commit(
+            lambda: send_document_request_email_task.delay(instance.id)
+        )
+        return instance
+
+
+class DocumentRequestSerializer(serializers.ModelSerializer):
+    """Serializer for DISPLAYING the full request data"""
+
+    document_type_name = serializers.CharField(
+        source="document_type.name", read_only=True
+    )
+
+    class Meta:
+        model = DocumentRequest
+        fields = [
+            "id",
+            "recipient_email",
+            "document_type",
+            "document_type_name",
+            "token",
+            "status",
+            "created",
+            "expires_at",
+            "last_sent_at",
+        ]
+        read_only_fields = fields
