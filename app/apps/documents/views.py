@@ -1,6 +1,7 @@
 # apps/documents/views.py
 from datetime import timedelta
 
+from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import generics, mixins, permissions, serializers, status, viewsets
@@ -18,7 +19,7 @@ from app.apps.documents.serializers import (
     DocumentUploadSerializer,
     FolderListSerializer,
 )
-from app.apps.documents.tasks import send_document_request_email_task
+from app.apps.notifications.tasks import send_notification_email_task
 
 
 class AnonymousDocumentUploadAPIView(generics.GenericAPIView):
@@ -62,7 +63,7 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
 
     def get_queryset(self):
         """only the current user"""
-        return DocumentRequest.objects.filter(user=self.request.user)
+        return DocumentRequest.objects.filter(requester=self.request.user)
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -81,10 +82,21 @@ class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
                 {"detail": "You can resend notification once per hour."}
             )
 
-        send_document_request_email_task.delay(doc_request.id)
+        with transaction.atomic():
+            doc_request.last_sent_at = timezone.now()
+            doc_request.save(update_fields=["last_sent_at"])
 
-        doc_request.last_sent_at = timezone.now()
-        doc_request.save(update_fields=["last_sent_at"])
+            # Sending a new task strictly after a successful transaction commit
+            transaction.on_commit(
+                lambda: send_notification_email_task.delay(
+                    recipient_email=doc_request.recipient_email,
+                    context=doc_request.get_email_context(),  # take a pure context
+                    notification_code="DOCUMENT_REQUEST",
+                    title=f"Document Request: {doc_request.document_type.name}",
+                    user_id=doc_request.requester.id,
+                    document_id=doc_request.id,
+                )
+            )
 
         return Response(
             {"detail": "Notification resent successfully."}, status=status.HTTP_200_OK

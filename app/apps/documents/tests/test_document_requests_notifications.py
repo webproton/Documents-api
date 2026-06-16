@@ -7,12 +7,13 @@ from django.utils import timezone
 from rest_framework import status
 
 from app.apps.documents.models import Document
-from app.apps.documents.tasks import send_document_request_email_task
+from app.apps.documents.models.document_request import DocumentRequest
 from app.apps.documents.tests.factories import (
     DocumentFactory,
     DocumentRequestFactory,
     DocumentTypeFactory,
 )
+from app.apps.notifications.tasks import send_notification_email_task
 
 
 @pytest.mark.django_db
@@ -41,16 +42,22 @@ class TestDocumentRequestNotifications:
             "document_type": self.document_type.id,
         }
 
-        with patch.object(send_document_request_email_task, "delay") as mock_delay:
+        with patch.object(send_notification_email_task, "delay") as mock_delay:
             response = self.client.post(url, data=data, format="json")
 
         assert response.status_code == status.HTTP_201_CREATED
         # We check that the Celery task was called exactly once.
         mock_delay.assert_called_once()
+        created_request = DocumentRequest.objects.get(id=response.data["id"])
 
-        # We check that the ID of the created request was passed to the task.
-        created_request_id = response.data["id"]
-        mock_delay.assert_called_with(created_request_id)
+        mock_delay.assert_called_with(
+            recipient_email=created_request.recipient_email,
+            context=created_request.get_email_context(),
+            notification_code="DOCUMENT_REQUEST",
+            title=f"Document Request: {created_request.document_type.name}",
+            user_id=created_request.requester.id,
+            document_id=created_request.id,
+        )
 
     def test_cancel_document_request_success(self):
         """
@@ -90,7 +97,8 @@ class TestDocumentRequestNotifications:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Cannot cancel a request" in response.data["errors"]["detail"]
 
-    @patch.object(send_document_request_email_task, "delay")
+    @patch.object(send_notification_email_task, "delay")
+    @pytest.mark.django_db(transaction=True)
     def test_resend_notification_success_after_one_hour(self, mock_celery_task):
         """
         A resend is successful if more than 1 hour has passed since the last send.
@@ -114,7 +122,14 @@ class TestDocumentRequestNotifications:
         assert response.data["detail"] == "Notification resent successfully."
 
         # checking Celery to resend.
-        mock_celery_task.assert_called_once_with(doc_request.id)
+        mock_celery_task.assert_called_once_with(
+            recipient_email=doc_request.recipient_email,
+            context=doc_request.get_email_context(),
+            notification_code="DOCUMENT_REQUEST",
+            title=f"Document Request: {doc_request.document_type.name}",
+            user_id=doc_request.requester.id,
+            document_id=doc_request.id,
+        )
 
         # check that the sending time has been updated to the current one
         doc_request.refresh_from_db()

@@ -2,12 +2,12 @@
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
 from app.apps.documents.models import DocumentRequest, DocumentType
-from app.config.settings import DOCUMENT_REQUEST_EXPIRATION_DAYS
 
 
 class DocumentRequestCreateSerializer(serializers.ModelSerializer):
@@ -26,13 +26,13 @@ class DocumentRequestCreateSerializer(serializers.ModelSerializer):
         fields = ["id", "recipient_email", "document_type", "token", "expires_at"]
         read_only_fields = ["id", "token", "expires_at"]
 
+    @transaction.atomic
     def create(self, validated_data):
         user = self.context["request"].user
         now = timezone.now()
         expiration_deadline = timezone.now() + timedelta(
-            days=int(DOCUMENT_REQUEST_EXPIRATION_DAYS)
+            days=int(getattr(settings, "DOCUMENT_REQUEST_EXPIRATION_DAYS", 30))
         )
-
         instance = DocumentRequest.objects.create(
             requester=user,
             expires_at=expiration_deadline,
@@ -40,10 +40,17 @@ class DocumentRequestCreateSerializer(serializers.ModelSerializer):
             **validated_data,
         )
 
-        from app.apps.documents.tasks import send_document_request_email_task
+        from app.apps.notifications.tasks import send_notification_email_task
 
         transaction.on_commit(
-            lambda: send_document_request_email_task.delay(instance.id)
+            lambda: send_notification_email_task.delay(
+                recipient_email=instance.recipient_email,
+                context=instance.get_email_context(),
+                notification_code="DOCUMENT_REQUEST",  # defining a template
+                title=f"Document Request: {instance.document_type.name}",
+                user_id=instance.requester.id,
+                document_id=instance.id,
+            )
         )
         return instance
 

@@ -3,6 +3,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from model_utils import Choices
 from model_utils.models import StatusModel, TimeStampedModel
@@ -63,3 +64,17 @@ class DocumentRequest(TimeStampedModel, StatusModel):
 
     def __str__(self):
         return f"Request for {self.document_type.name} to {self.recipient_email}"
+
+    def get_email_context(self) -> dict:
+        """Generates a link and context for sending an email"""
+        relative_url = reverse(
+            "apps.documents:anonymous-upload", kwargs={"token": self.token}
+        )
+        base_url = settings.BACKEND_URL.rstrip("/")
+
+        return {
+            "username": self.recipient_email,
+            "requester_email": self.requester.email,
+            "document_type_name": self.document_type.name,
+            "upload_url": f"{base_url}{relative_url}",
+        }
