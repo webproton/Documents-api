@@ -21,6 +21,8 @@ def send_notification_email_task(
     # select template
     if notification_code == Notification.TYPE.EMAIL_CONFIRMATION:
         template_name = "notifications/email_confirmation.html"
+    elif notification_code == Notification.TYPE.DOCUMENT_REQUEST:
+        template_name = "notifications/document_request.html"
     else:
         template_name = "notifications/base_email.html"
 
