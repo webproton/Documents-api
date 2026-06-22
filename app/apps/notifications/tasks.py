@@ -34,7 +34,7 @@ def send_notification_email_task(
             message=html_message,
             title=title,
             user_id=user_id,
-            status=Notification.STATUS.FAILED,
+            status=Notification.STATUS.PENDING,
             document_id=document_id,
         )
 

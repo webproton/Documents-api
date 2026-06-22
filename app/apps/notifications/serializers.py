@@ -9,18 +9,13 @@ class NotificationListSerializer(serializers.ModelSerializer):
     Eliminates the heavy `message` field (HTML body).
     """
 
-    type_display = serializers.CharField(source="get_type_display", read_only=True)
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
-
     class Meta:
         model = Notification
         fields = [
             "id",
             "title",
             "type",
-            "type_display",
             "status",
-            "status_display",
             "recipient_email",
             "created",
             "sent_at",
