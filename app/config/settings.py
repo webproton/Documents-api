@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "apps.accounts",
     "apps.documents",
+    "apps.notifications",
     "django_filters",
     "django_extensions",
     "drf_yasg",
@@ -189,6 +190,7 @@ STORAGES = {
 
 # ====================== DOCUMENTS ======================
 DOCUMENT_MAX_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_DOCUMENT_EXTENSIONS = [".pdf", ".xls", ".xlsx", ".csv"]
 
 ALLOWED_DOCUMENT_TYPES = {
     "application/pdf",
@@ -259,3 +261,7 @@ ALLOWED_AVATAR_TYPES = {
     "image/jpeg",
     "image/png",
 }
+
+DOCUMENT_REQUEST_EXPIRATION_DAYS = env("DOCUMENT_REQUEST_EXPIRATION_DAYS")
+
+BACKEND_URL = env("BACKEND_URL", default="http://localhost:8000")

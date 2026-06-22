@@ -4,8 +4,9 @@ from django.db import IntegrityError, transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+from app.apps.notifications.tasks import send_notification_email_task
+
 from .models import EmailConfirmation, User
-from .tasks import send_confirmation_email_task
 
 
 class LogoutSerializer(serializers.Serializer):
@@ -21,7 +22,7 @@ class LoginSerializer(TokenObtainPairSerializer):
         # generate token
         data = super().validate(attrs)
 
-        user = self.user  # уже установлен SimpleJWT
+        user = self.user
 
         if not user.is_active:
             raise serializers.ValidationError("Email is not confirmed")
@@ -62,25 +63,40 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Password too similar to email")
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
         try:
-            with transaction.atomic():
-                user = User.objects.create_user(
-                    email=validated_data["email"],
-                    password=validated_data["password"],
-                    is_active=False,
-                )
+            user = User.objects.create_user(
+                email=validated_data["email"],
+                password=validated_data["password"],
+                is_active=False,
+            )
 
-                confirmation = EmailConfirmation.create_email_confirmation(user)
+            # Create a confirmation token
+            confirmation = EmailConfirmation.create_email_confirmation(user)
+            confirm_url = (
+                f"{settings.EMAIL_CONFIRM_BASE_URL}?token={confirmation.token}"
+            )
 
-                # send the task immediately after successful creation
-                send_confirmation_email_task.delay(
-                    user_email=user.email,
-                    token=str(confirmation.token),
+            # context mail
+            email_context = {
+                "username": user.email,
+                "token": str(confirmation.token),
+                "confirmation_url": confirm_url,
+            }
+            # to Celery only AFTER a successful commit to the database
+            transaction.on_commit(
+                lambda: send_notification_email_task.delay(
+                    recipient_email=user.email,
+                    context=email_context,
+                    notification_code="EMAIL_CONFIRMATION",
+                    title="Welcome! Confirm your email registration",
+                    user_id=user.id,
+                    document_id=None,
                 )
+            )
 
             return user
-
         except IntegrityError:
             raise serializers.ValidationError({"email": "Email already exists"})
 

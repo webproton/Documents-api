@@ -2,7 +2,7 @@
 import uuid
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.utils.text import get_valid_filename
 from django.utils.translation import gettext_lazy as _
 from model_utils import Choices
@@ -40,8 +40,11 @@ class Document(TimeStampedModel, StatusModel):
 
     document_type = models.ForeignKey(
         "documents.DocumentType",
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
         verbose_name=_("Document type"),
+        related_name="documents",
     )
 
     user = models.ForeignKey(
@@ -66,3 +69,28 @@ class Document(TimeStampedModel, StatusModel):
 
     def __str__(self):
         return f"{self.name} ({self.document_type.name})"
+
+    @transaction.atomic
+    def delete(self, *args, **kwargs):
+        """
+        If an ACTIVE document is deleted, automatically restore the
+        most recent REPLACED version back to ACTIVE.
+        """
+        if self.status == self.STATUS.ACTIVE:
+            # looking for the last replaced document
+            # of the same type for the same user.
+            last_replaced = (
+                Document.objects.filter(
+                    user=self.user,
+                    document_type=self.document_type,
+                    status=self.STATUS.REPLACED,
+                )
+                .order_by("-created")
+                .first()
+            )
+
+            if last_replaced:
+                last_replaced.status = self.STATUS.ACTIVE
+                last_replaced.save(update_fields=["status"])
+
+        super().delete(*args, **kwargs)

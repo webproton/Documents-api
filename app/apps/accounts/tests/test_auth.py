@@ -10,8 +10,8 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 
-@pytest.mark.django_db
-@patch("app.apps.accounts.serializers.send_confirmation_email_task.delay")
+@pytest.mark.django_db(transaction=True)
+@patch("app.apps.accounts.serializers.send_notification_email_task")
 def test_register_user(mock_send_email, api_client):
     url = reverse("apps.accounts:register")
 
@@ -29,7 +29,7 @@ def test_register_user(mock_send_email, api_client):
 
     assert user.is_active is False
 
-    mock_send_email.assert_called_once()
+    mock_send_email.delay.assert_called_once()
 
 
 @pytest.mark.django_db
