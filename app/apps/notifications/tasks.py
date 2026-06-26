@@ -84,6 +84,7 @@ def check_document_expirations_cron_task():
 
     expiring_documents = Document.objects.filter(
         status="ACTIVE",
+        is_reminder_sent=False,
         expiration_date__gte=today,
         expiration_date__lte=thirty_days_later,
     ).select_related("user")
@@ -92,24 +93,21 @@ def check_document_expirations_cron_task():
         if not doc.user or not doc.user.email:
             continue
 
-        # Duplication protection
-        already_notified = Notification.objects.filter(
-            document=doc, type=Notification.TYPE.REMINDER
-        ).exists()
+        context = {
+            "user_name": doc.user.first_name or doc.user.username,
+            "document_name": doc.name,
+            "expiration_date": doc.expiration_date.strftime("%d.%m.%Y"),
+        }
 
-        if not already_notified:
-            context = {
-                "user_name": doc.user.first_name or doc.user.username,
-                "document_name": doc.name,
-                "expiration_date": doc.expiration_date.strftime("%d.%m.%Y"),
-            }
-
-            # pass document_id=doc.id to associate the notification with the document!
-            send_notification_email_task.delay(
-                recipient_email=doc.user.email,
-                context=context,
-                notification_code=Notification.TYPE.REMINDER,
-                title=f"Action Required: Your document {doc.name} is expiring soon",
-                user_id=doc.user.id,
-                document_id=doc.id,
-            )
+        # pass document_id=doc.id to associate the notification with the document!
+        send_notification_email_task.delay(
+            recipient_email=doc.user.email,
+            context=context,
+            notification_code=Notification.TYPE.REMINDER,
+            title=f"Action Required: Your document {doc.name} is expiring soon",
+            user_id=doc.user.id,
+            document_id=doc.id,
+        )
+        # set mark True
+        doc.is_reminder_sent = True
+        doc.save(update_fields=["is_reminder_sent"])

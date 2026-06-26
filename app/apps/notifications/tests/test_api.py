@@ -69,3 +69,22 @@ def test_api_filtering_by_status_and_type(api_client, user):
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data) == 1
     assert response.data[0]["id"] == n2.id
+
+
+def test_user_cannot_access_others_notification_detail(api_client, user, user_factory):
+    """Пользователь не должен иметь доступ к детальному просмотру чужого уведомления."""
+    other_user = user_factory()
+    other_notification = NotificationFactory(user=other_user, message="Secret HTML")
+
+    api_client.force_authenticate(user=user)
+    url = reverse(
+        "apps.notifications:notification-detail", kwargs={"pk": other_notification.id}
+    )
+    response = api_client.get(url)
+
+    # Здесь может быть 404 Not Found (если фильтрация идет на уровне get_queryset)
+    # или 403 Forbidden (если через permissions). Обычно в DRF лучше возвращать 404.
+    assert response.status_code in [
+        status.HTTP_404_NOT_FOUND,
+        status.HTTP_403_FORBIDDEN,
+    ]

@@ -23,7 +23,6 @@ class Notification(StatusModel, TimeStampedModel):
         ("EMAIL_CONFIRMATION", _("Email Confirmation")),
         ("DOCUMENT_REQUEST", _("Document Request")),
         ("REMINDER", _("Reminder")),
-        ("SYSTEM", _("System")),
     )
 
     user = models.ForeignKey(

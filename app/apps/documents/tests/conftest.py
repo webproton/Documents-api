@@ -9,6 +9,11 @@ def api_client():
 
 
 @pytest.fixture
+def user_factory():
+    return UserFactory
+
+
+@pytest.fixture
 def user():
     return UserFactory()
 

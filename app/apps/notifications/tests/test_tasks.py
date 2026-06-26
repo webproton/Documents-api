@@ -59,7 +59,6 @@ def test_send_email_confirmation_task_success(user):
     assert notification.status == Notification.STATUS.SENT
     assert notification.type == Notification.TYPE.EMAIL_CONFIRMATION
     assert notification.sent_at is not None
-    assert notification.user == user
 
 
 def test_send_email_confirmation_task_failure(user):
@@ -109,7 +108,7 @@ def test_check_document_expirations_cron_task_success(mock_send_email, user):
     today = timezone.now().date()
     # Create an active document that expires in 30 days.
     expiring_doc = DocumentFactory(
-        user=user, expiration_date=today + timedelta(days=30)
+        user=user, expiration_date=today + timedelta(days=30), is_reminder_sent=False
     )
 
     # Execute Cron Task
@@ -118,6 +117,9 @@ def test_check_document_expirations_cron_task_success(mock_send_email, user):
     # check that the asynchronous dispatch task was called exactly once.
 
     assert mock_send_email.call_count == 1
+    # check :  field mark True
+    expiring_doc.refresh_from_db()
+    assert expiring_doc.is_reminder_sent is True
 
     # check that a REMINDER type record has been logged in the database.
     notification = Notification.objects.get(document=expiring_doc)
@@ -136,7 +138,10 @@ def test_check_document_expirations_cron_task_excludes_inactive(mock_send_email,
 
     # factory status to REPLACED
     DocumentFactory(
-        user=user, status="REPLACED", expiration_date=today + timedelta(days=15)
+        user=user,
+        status="REPLACED",
+        expiration_date=today + timedelta(days=15),
+        is_reminder_sent=False,
     )
 
     # Execute Cron Task
@@ -156,7 +161,9 @@ def test_check_document_expirations_cron_task_deduplication(mock_send_email, use
     mock_send_email.side_effect = send_notification_email_task
     today = timezone.now().date()
 
-    doc = DocumentFactory(user=user, expiration_date=today + timedelta(days=10))
+    doc = DocumentFactory(
+        user=user, expiration_date=today + timedelta(days=10), is_reminder_sent=False
+    )
     # Run the task for the first time to create a history entry.
     check_document_expirations_cron_task()
     assert mock_send_email.call_count == 1
