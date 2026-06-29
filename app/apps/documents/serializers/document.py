@@ -60,3 +60,9 @@ class DocumentUpdateSerializer(serializers.ModelSerializer):
         model = Document
         fields = ["id", "name", "status", "document_type", "expiration_date", "file"]
         read_only_fields = ["id", "status", "document_type"]
+
+
+class DocumentTypePublicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DocumentType
+        fields = ["id", "name", "description", "template"]
