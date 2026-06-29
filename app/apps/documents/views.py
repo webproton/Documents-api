@@ -54,10 +54,12 @@ class AnonymousDocumentUploadAPIView(generics.GenericAPIView):
         return context
 
 
-class DocumentRequestViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
+class DocumentRequestViewSet(
+    mixins.CreateModelMixin, mixins.ListModelMixin, viewsets.GenericViewSet
+):
     """
     ViewSet for creating document requests.
-    Uses GenericViewSet + CreateModelMixin to expose EXCLUSIVELY the POST method.
+    Allows creating new requests (POST) and viewing the list of sent requests (GET).
     IsAuthenticated is used by default in the settings
     """
 
@@ -133,12 +135,14 @@ class DocumentFolderViewSet(viewsets.ReadOnlyModelViewSet):
 
         # prefetch_related with an explicit Queryset perfectly
         # filters the current user's documents with just one additional query.
+        user_active_documents = Document.objects.filter(
+            user=self.request.user, status=Document.STATUS.ACTIVE
+        ).order_by("-created")
+
         return DocumentType.objects.prefetch_related(
             Prefetch(
                 "documents",
-                queryset=Document.objects.filter(user=self.request.user).order_by(
-                    "-created"
-                ),
+                queryset=user_active_documents,
             )
         ).order_by("name")
 

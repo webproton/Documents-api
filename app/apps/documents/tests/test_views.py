@@ -108,12 +108,24 @@ def test_authenticated_user_can_list_folders_with_only_their_documents(
 
     # Create a document belonging to our user
     user_doc = DocumentFactory(
-        user=user, document_type=contract_type, name="User Contract"
+        user=user,
+        document_type=contract_type,
+        name="User Active Contract",
+        status=Document.STATUS.ACTIVE,
     )
 
     # Create a document belonging to another random user (should be isolated)
     other_user_doc = DocumentFactory(
-        document_type=contract_type, name="Strangers Contract"
+        document_type=contract_type,
+        name="Strangers Contract",
+        status=Document.STATUS.ACTIVE,
+    )
+    # self replaced doc
+    user_replaced_doc = DocumentFactory(
+        user=user,
+        document_type=contract_type,
+        name="User Replaced Contract",
+        status=Document.STATUS.REPLACED,
     )
 
     url = reverse("apps.documents:folder-list")
@@ -132,6 +144,7 @@ def test_authenticated_user_can_list_folders_with_only_their_documents(
     extracted_doc_ids = [doc["id"] for doc in contracts_folder["documents"]]
     assert user_doc.id in extracted_doc_ids
     assert other_user_doc.id not in extracted_doc_ids
+    assert user_replaced_doc.id not in extracted_doc_ids
 
 
 @pytest.mark.django_db
@@ -291,3 +304,33 @@ def test_anonymous_upload_fails_with_invalid_token(api_client):
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert "detail" in response.data["errors"]
+
+
+@pytest.mark.django_db
+def test_authenticated_user_can_list_only_their_own_document_requests(
+    api_client, user, user_factory
+):
+    """
+    Verifies that the user sees a list of only their own outgoing document requests.
+    Requests from others are hidden.
+    """
+    from app.apps.documents.tests.factories import DocumentRequestFactory
+
+    other_user = user_factory()
+
+    # Create a request from the current user.
+    my_request = DocumentRequestFactory(requester=user, recipient_email="client@my.com")
+    # Create a request from the other user.
+    DocumentRequestFactory(requester=other_user, recipient_email="stranger@other.com")
+
+    api_client.force_authenticate(user=user)
+
+    url = reverse("apps.documents:document-request-list")
+    response = api_client.get(url)
+
+    assert response.status_code == status.HTTP_200_OK
+
+    # The list must contain only one request from us.
+    assert len(response.data) == 1
+    assert response.data[0]["id"] == my_request.id
+    assert response.data[0]["recipient_email"] == "client@my.com"

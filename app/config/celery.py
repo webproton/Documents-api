@@ -20,4 +20,8 @@ app.conf.beat_schedule = {
         "task": "app.apps.documents.tasks.auto_expire_document_requests_task",
         "schedule": crontab(hour=0, minute=0),  # Every midnight
     },
+    "send-daily-document-reminders": {
+        "task": "app.apps.notifications.tasks.check_document_expirations_cron_task",
+        "schedule": crontab(hour=0, minute=0),  # Every midnight
+    },
 }

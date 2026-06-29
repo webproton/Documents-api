@@ -58,6 +58,8 @@ class Document(TimeStampedModel, StatusModel):
         verbose_name=_("Expiration date"), null=True, blank=True
     )
 
+    is_reminder_sent = models.BooleanField(_("Is Reminder Sent"), default=False)
+
     class Meta:
         ordering = ["-created"]
         indexes = [

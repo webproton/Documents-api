@@ -1,10 +1,12 @@
 import logging
+from datetime import timedelta
 
 from celery import shared_task
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from app.apps.documents.models.document import Document
 from app.apps.notifications.models import Notification
 
 logger = logging.getLogger(__name__)
@@ -23,6 +25,8 @@ def send_notification_email_task(
         template_name = "notifications/email_confirmation.html"
     elif notification_code == Notification.TYPE.DOCUMENT_REQUEST:
         template_name = "notifications/document_request.html"
+    elif notification_code == Notification.TYPE.REMINDER:
+        template_name = "notifications/reminder.html"
     else:
         template_name = "notifications/base_email.html"
 
@@ -68,3 +72,42 @@ def send_notification_email_task(
             # If there was already a recording, just switch to FAILED
             notification.status = Notification.STATUS.FAILED
             notification.save(update_fields=["status"])
+
+
+@shared_task
+def check_document_expirations_cron_task():
+    """
+    A periodic task to search for ACTIVE documents that expire in ≤ 30 days.
+    """
+    today = timezone.now().date()
+    thirty_days_later = today + timedelta(days=30)
+
+    expiring_documents = Document.objects.filter(
+        status=Document.STATUS.ACTIVE,
+        is_reminder_sent=False,
+        expiration_date__gte=today,
+        expiration_date__lte=thirty_days_later,
+    ).select_related("user")
+
+    for doc in expiring_documents:
+        if not doc.user or not doc.user.email:
+            continue
+
+        context = {
+            "user_name": doc.user.first_name or doc.user.username,
+            "document_name": doc.name,
+            "expiration_date": doc.expiration_date.strftime("%d.%m.%Y"),
+        }
+
+        # pass document_id=doc.id to associate the notification with the document!
+        send_notification_email_task.delay(
+            recipient_email=doc.user.email,
+            context=context,
+            notification_code=Notification.TYPE.REMINDER,
+            title=f"Action Required: Your document {doc.name} is expiring soon",
+            user_id=doc.user.id,
+            document_id=doc.id,
+        )
+        # set mark True
+        doc.is_reminder_sent = True
+        doc.save(update_fields=["is_reminder_sent"])
