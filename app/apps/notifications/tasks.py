@@ -83,7 +83,7 @@ def check_document_expirations_cron_task():
     thirty_days_later = today + timedelta(days=30)
 
     expiring_documents = Document.objects.filter(
-        status="ACTIVE",
+        status=Document.STATUS.ACTIVE,
         is_reminder_sent=False,
         expiration_date__gte=today,
         expiration_date__lte=thirty_days_later,
