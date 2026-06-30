@@ -125,7 +125,10 @@ class TestDocumentSearchAndFilters:
             "apps.documents:folder-all-documents", kwargs={"pk": passport_type_id}
         )
 
-        response = api_client.get(url, {"expiration_date": "2026-12-31"})
+        response = api_client.get(
+            url,
+            {"expiration_date_from": "2026-12-01", "expiration_date_to": "2026-12-31"},
+        )
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1
         assert response.data[0]["name"] == "My Main Passport"
@@ -139,7 +142,10 @@ class TestDocumentSearchAndFilters:
         url = reverse("apps.documents:folder-list")
 
         # Passport expires on 2026-12-31, Visa expires on 2026-06-30
-        response = api_client.get(url, {"expiration_date": "2026-12-31"})
+        response = api_client.get(
+            url,
+            {"expiration_date_from": "2026-07-01", "expiration_date_to": "2026-12-31"},
+        )
         assert response.status_code == status.HTTP_200_OK
         # Only the Passport folder should be returned
         assert len(response.data) == 1

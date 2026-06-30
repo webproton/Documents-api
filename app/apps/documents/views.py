@@ -4,7 +4,6 @@ from datetime import timedelta
 from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
-from django.utils.dateparse import parse_date
 from rest_framework import (
     filters,
     generics,
@@ -19,6 +18,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from app.apps.documents.filters import DocumentFilter
 from app.apps.documents.models import Document, DocumentRequest, DocumentType
 from app.apps.documents.serializers import (
     AnonymousDocumentUploadSerializer,
@@ -169,22 +169,20 @@ class DocumentFolderViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         user = self.request.user
 
-        user_documents = Document.objects.filter(user=user)
+        # get base qset user
+        base_user_documents = Document.objects.filter(user=user)
 
-        # Allow filtering by expiration date (?expiration_date=2026-12-31)
-        expiration_date_param = self.request.query_params.get("expiration_date")
-        if expiration_date_param:
-            # use django utilities parse_date
-            parsed_date = parse_date(expiration_date_param)
-            if parsed_date:
-                user_documents = user_documents.filter(expiration_date=parsed_date)
+        # pass it through a date range filter set
+        filtered_documents = DocumentFilter(
+            self.request.query_params, queryset=base_user_documents
+        ).qs
 
         # Separate the logic for the folder list and the detailed view.
         if self.action == "list":
             # By default, only the active document in each folder is shown
-            active_docs = user_documents.filter(status=Document.STATUS.ACTIVE).order_by(
-                "-created"
-            )
+            active_docs = filtered_documents.filter(
+                status=Document.STATUS.ACTIVE
+            ).order_by("-created")
 
             # Folders with no documents do not appear in the list
             return (
@@ -210,14 +208,9 @@ class DocumentFolderViewSet(viewsets.ReadOnlyModelViewSet):
             user=request.user, document_type=folder
         ).order_by("-created")
 
-        # filtering by end date, if provided.
-        expiration_date_param = request.query_params.get("expiration_date")
-        if expiration_date_param:
-            parsed_date = parse_date(expiration_date_param)
-            if parsed_date:
-                documents = documents.filter(expiration_date=parsed_date)
+        filtered_documents = DocumentFilter(request.query_params, queryset=documents).qs
 
-        serializer = FolderDocumentSerializer(documents, many=True)
+        serializer = FolderDocumentSerializer(filtered_documents, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
