@@ -5,11 +5,11 @@ from app.apps.documents.models import Document
 
 
 class DocumentFilter(django_filters.FilterSet):
-    # Фильтр "с какой даты" (Greater than or equal)
+    # Greater than or equal
     expiration_date_from = django_filters.DateFilter(
         field_name="expiration_date", lookup_expr="gte"
     )
-    # Фильтр "по какую дату" (Less than or equal)
+    # Less than or equal
     expiration_date_to = django_filters.DateFilter(
         field_name="expiration_date", lookup_expr="lte"
     )
