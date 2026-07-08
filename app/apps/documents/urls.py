@@ -4,6 +4,7 @@ from apps.documents.views import (
     AnonymousDocumentUploadAPIView,
     DocumentFolderViewSet,
     DocumentRequestViewSet,
+    DocumentTypeViewSet,
     DocumentUploadAPIView,
     DocumentViewSet,
 )
@@ -17,6 +18,7 @@ router = DefaultRouter()
 router.register(r"folders", DocumentFolderViewSet, basename="folder")
 router.register(r"requests", DocumentRequestViewSet, basename="document-request")
 router.register(r"documents", DocumentViewSet, basename="document")
+router.register(r"types", DocumentTypeViewSet, basename="document-type")
 
 urlpatterns = [
     path("upload/", DocumentUploadAPIView.as_view(), name="upload"),

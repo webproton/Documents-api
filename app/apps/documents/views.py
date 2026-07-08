@@ -4,19 +4,30 @@ from datetime import timedelta
 from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
-from rest_framework import generics, mixins, permissions, serializers, status, viewsets
+from rest_framework import (
+    filters,
+    generics,
+    mixins,
+    permissions,
+    serializers,
+    status,
+    viewsets,
+)
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from app.apps.documents.filters import DocumentFilter
 from app.apps.documents.models import Document, DocumentRequest, DocumentType
 from app.apps.documents.serializers import (
     AnonymousDocumentUploadSerializer,
     DocumentRequestCreateSerializer,
     DocumentRequestSerializer,
+    DocumentTypePublicSerializer,
     DocumentUpdateSerializer,
     DocumentUploadSerializer,
+    FolderDocumentSerializer,
     FolderListSerializer,
 )
 from app.apps.notifications.tasks import send_notification_email_task
@@ -122,29 +133,85 @@ class DocumentRequestViewSet(
         )
 
 
+class DocumentTypeViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Endpoint for viewing document types by all users.
+    Supports search via ?search=...
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = DocumentType.objects.all().order_by("name")
+    serializer_class = DocumentTypePublicSerializer
+
+    filter_backends = [filters.SearchFilter]
+    search_fields = ["name", "description"]
+
+
 class DocumentFolderViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    API endpoint that allows folders (DocumentTypes) to be viewed.
-    Automatically provides 'list' and 'retrieve' actions.
-    IsAuthenticated is used by default in the settings
+    managing user folders.
+    Provides:
+    - Retrieval of the folder list (containing only active documents)
+    - Search, filtering, and sorting
+    - Retrieval of ALL documents within a specific folder
     """
 
     serializer_class = FolderListSerializer
 
-    def get_queryset(self):
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
 
-        # prefetch_related with an explicit Queryset perfectly
-        # filters the current user's documents with just one additional query.
-        user_active_documents = Document.objects.filter(
-            user=self.request.user, status=Document.STATUS.ACTIVE
+    # Support searching by name or document type
+    search_fields = ["documents__name", "name"]
+
+    # Support sorting by creation date, name, or document type
+    ordering_fields = ["documents__created", "name"]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # get base qset user
+        base_user_documents = Document.objects.filter(user=user)
+
+        # pass it through a date range filter set
+        filtered_documents = DocumentFilter(
+            self.request.query_params, queryset=base_user_documents
+        ).qs
+
+        # Separate the logic for the folder list and the detailed view.
+        if self.action == "list":
+            # By default, only the active document in each folder is shown
+            active_docs = filtered_documents.filter(
+                status=Document.STATUS.ACTIVE
+            ).order_by("-created")
+
+            # Folders with no documents do not appear in the list
+            return (
+                DocumentType.objects.filter(
+                    documents__in=active_docs,
+                )
+                .prefetch_related(Prefetch("documents", queryset=active_docs))
+                .order_by("name")
+                .distinct()
+            )
+
+        return DocumentType.objects.all().order_by("name")
+
+    # It’s possible to get all documents in a specified folder
+    # GET /api/documents/folders/{id}/all_documents/
+    @action(detail=True, methods=["get"], url_path="all-documents")
+    def all_documents(self, request, pk=None):
+        """Returns ALL documents (both active and replaced) for the specified folder."""
+        folder = self.get_object()  # Get the current document type (folder).
+
+        # users documents from this folder.
+        documents = Document.objects.filter(
+            user=request.user, document_type=folder
         ).order_by("-created")
 
-        return DocumentType.objects.prefetch_related(
-            Prefetch(
-                "documents",
-                queryset=user_active_documents,
-            )
-        ).order_by("name")
+        filtered_documents = DocumentFilter(request.query_params, queryset=documents).qs
+
+        serializer = FolderDocumentSerializer(filtered_documents, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class DocumentUploadAPIView(APIView):

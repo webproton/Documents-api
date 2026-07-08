@@ -1,6 +1,10 @@
 from .anonymous_document import AnonymousDocumentUploadSerializer
-from .document import DocumentUpdateSerializer, DocumentUploadSerializer
-from .folder import FolderListSerializer
+from .document import (
+    DocumentTypePublicSerializer,
+    DocumentUpdateSerializer,
+    DocumentUploadSerializer,
+)
+from .folder import FolderDocumentSerializer, FolderListSerializer
 from .request import DocumentRequestCreateSerializer, DocumentRequestSerializer
 
 __all__ = [
@@ -10,4 +14,6 @@ __all__ = [
     "AnonymousDocumentUploadSerializer",
     "DocumentRequestSerializer",
     "DocumentUpdateSerializer",
+    "DocumentTypePublicSerializer",
+    "FolderDocumentSerializer",
 ]
