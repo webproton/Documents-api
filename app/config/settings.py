@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "apps.accounts",
     "apps.documents",
+    "apps.billing",
     "apps.notifications",
     "django_filters",
     "django_extensions",
@@ -265,3 +266,6 @@ ALLOWED_AVATAR_TYPES = {
 DOCUMENT_REQUEST_EXPIRATION_DAYS = env("DOCUMENT_REQUEST_EXPIRATION_DAYS")
 
 BACKEND_URL = env("BACKEND_URL", default="http://localhost:8000")
+# Billing
+
+DEFAULT_CURRENCY = env("DEFAULT_CURRENCY", default="USD")
