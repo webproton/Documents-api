@@ -22,7 +22,7 @@ class Subscription(TimeStampedModel, StatusModel):
         ("FAILED", _("Failed")),
     )
 
-    user = models.ForeignKey(
+    user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         related_name="subscriptions",
         on_delete=models.CASCADE,
@@ -30,7 +30,8 @@ class Subscription(TimeStampedModel, StatusModel):
     )
     plan = models.ForeignKey(
         "billing.Plan",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name="subscriptions",
         verbose_name=_("Plan"),
     )
