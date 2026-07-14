@@ -24,7 +24,7 @@ class Subscription(TimeStampedModel, StatusModel):
 
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
-        related_name="subscriptions",
+        related_name="subscription",
         on_delete=models.CASCADE,
         verbose_name=_("User"),
     )
