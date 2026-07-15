@@ -1,9 +1,10 @@
 from decimal import Decimal
 
 import factory
-from billing.models import Order
-from billing.tests.factories.subscription import SubscriptionFactory
 from django.conf import settings
+
+from app.apps.billing.models import Order
+from app.apps.billing.tests.factories.subscription import SubscriptionFactory
 
 
 class OrderFactory(factory.django.DjangoModelFactory):

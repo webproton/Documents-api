@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from app.apps.billing.serializers import CheckoutSerializer
+from app.apps.billing.services import StripeService
 
 
 class CheckoutView(APIView):
@@ -21,6 +22,20 @@ class CheckoutView(APIView):
             data=request.data,
             context={"request": request},
         )
-        serializer.is_valid(raise_exception=True)
+        print("before serializer")
 
-        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        serializer.is_valid(raise_exception=True)
+        print("before stripe")
+
+        session = StripeService.start_checkout(
+            user=request.user,
+            plan=serializer.validated_data["plan"],
+        )
+        print("after stripe")
+        return Response(
+            {
+                "checkout_url": session.url,
+                "session_id": session.id,
+            },
+            status=status.HTTP_200_OK,
+        )
