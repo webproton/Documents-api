@@ -42,3 +42,7 @@ class Plan(TimeStampedModel):
 
     def __str__(self):
         return f"{self.get_name_display()}"
+
+    @classmethod
+    def get_free_plan(cls):
+        return cls.objects.get(name=cls.NAME.FREE)

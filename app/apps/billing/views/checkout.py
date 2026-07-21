@@ -22,16 +22,13 @@ class CheckoutView(APIView):
             data=request.data,
             context={"request": request},
         )
-        print("before serializer")
 
         serializer.is_valid(raise_exception=True)
-        print("before stripe")
 
         session = StripeService.start_checkout(
             user=request.user,
             plan=serializer.validated_data["plan"],
         )
-        print("after stripe")
         return Response(
             {
                 "checkout_url": session.url,

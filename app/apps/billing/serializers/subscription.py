@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from app.apps.billing.models import Subscription
+from app.apps.billing.serializers import PlanSerializer
 
 
 class SubscriptionSerializer(serializers.ModelSerializer):
@@ -11,7 +12,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     selected plan, billing status, and subscription period.
     """
 
-    plan = serializers.CharField(source="plan.name", read_only=True)
+    plan = PlanSerializer(read_only=True)
 
     class Meta:
         model = Subscription
