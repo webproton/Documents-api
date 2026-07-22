@@ -9,7 +9,8 @@ from app.apps.billing.tests.factories.plan import PlanFactory
 
 @pytest.mark.django_db
 def test_plan_list_returns_only_active_plans(api_client):
-    PlanFactory(name=Plan.NAME.FREE, is_active=True)
+    Plan.objects.filter(name=Plan.NAME.FREE).update(is_active=True)
+
     PlanFactory(name=Plan.NAME.PRO, is_active=True)
     PlanFactory(name=Plan.NAME.BUSINESS, is_active=False)
 
@@ -21,14 +22,16 @@ def test_plan_list_returns_only_active_plans(api_client):
 
 @pytest.mark.django_db
 def test_plan_list_is_ordered_by_price(api_client):
-    PlanFactory(name=Plan.NAME.BUSINESS, price=30)
-    PlanFactory(name=Plan.NAME.FREE, price=0)
+    Plan.objects.filter(name=Plan.NAME.FREE).update(price=0)
+
     PlanFactory(name=Plan.NAME.PRO, price=10)
+    PlanFactory(name=Plan.NAME.BUSINESS, price=30)
 
     response = api_client.get(reverse("app.apps.billing:plan-list"))
 
     prices = [plan["price"] for plan in response.data]
 
+    assert prices == ["0.00", "10.00", "30.00"]
     assert prices == ["0.00", "10.00", "30.00"]
 
 

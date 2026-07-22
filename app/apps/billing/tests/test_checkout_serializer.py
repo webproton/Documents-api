@@ -20,7 +20,7 @@ def test_checkout_serializer_accepts_paid_plan():
 
 @pytest.mark.django_db
 def test_checkout_serializer_rejects_free_plan():
-    plan = PlanFactory(name=Plan.NAME.FREE)
+    plan = Plan.objects.get(name=Plan.NAME.FREE)
 
     serializer = CheckoutSerializer(
         data={"plan": plan.id},
