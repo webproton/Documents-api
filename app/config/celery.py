@@ -24,4 +24,8 @@ app.conf.beat_schedule = {
         "task": "app.apps.notifications.tasks.check_document_expirations_cron_task",
         "schedule": crontab(hour=0, minute=0),  # Every midnight
     },
+    "expire-subscriptions": {
+        "task": "app.apps.billing.tasks.expire_subscriptions",
+        "schedule": crontab(minute=0),  # every hour
+    },
 }

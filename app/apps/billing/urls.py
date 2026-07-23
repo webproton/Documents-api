@@ -3,6 +3,8 @@
 from django.urls import path
 
 from app.apps.billing.views import (
+    CancelSubscriptionView,
+    ChangePlanView,
     CheckoutView,
     CurrentSubscriptionView,
     PlanViewSet,
@@ -31,5 +33,15 @@ urlpatterns = [
         "webhook/",
         StripeWebhookView.as_view(),
         name="webhook",
+    ),
+    path(
+        "subscription/cancel/",
+        CancelSubscriptionView.as_view(),
+        name="cancel-subscription",
+    ),
+    path(
+        "subscription/change-plan/",
+        ChangePlanView.as_view(),
+        name="change-plan",
     ),
 ]

@@ -5,7 +5,7 @@ from datetime import datetime
 from django.db import transaction
 from django.utils import timezone
 
-from app.apps.billing.models import Order, StripeWebhookEvent, Subscription
+from app.apps.billing.models import Order, Plan, StripeWebhookEvent, Subscription
 
 
 class StripeWebhookService:
@@ -130,7 +130,6 @@ class StripeWebhookService:
                 "stripe_customer_id",
                 "current_period_end",
                 "cancel_at_period_end",
-                "plan",
             ]
         )
 
@@ -187,11 +186,8 @@ class StripeWebhookService:
         subscription.status = Subscription.STATUS.EXPIRED
         subscription.end_date = timezone.now()
         subscription.cancel_at_period_end = False
+        subscription.plan = Plan.get_free_plan()
 
         subscription.save(
-            update_fields=[
-                "status",
-                "end_date",
-                "cancel_at_period_end",
-            ]
+            update_fields=["status", "end_date", "cancel_at_period_end", "plan"]
         )

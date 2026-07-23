@@ -115,3 +115,59 @@ class StripeService:
         order.save(update_fields=["stripe_checkout_session_id"])
 
         return session
+
+    @staticmethod
+    def change_plan(subscription, new_plan):
+        if not subscription.stripe_subscription_id:
+            raise APIException(
+                "No active paid subscription. Use /checkout/ to purchase a plan."
+            )
+
+        if subscription.plan_id == new_plan.id:
+            raise APIException("You are already subscribed to this plan.")
+
+        if new_plan.name == Plan.NAME.FREE:
+            raise APIException("Cannot change to FREE plan.")
+
+        if not new_plan.stripe_price_id:
+            raise APIException("Stripe price is not configured for this plan.")
+
+        try:
+            stripe_sub = stripe.Subscription.retrieve(
+                subscription.stripe_subscription_id
+            )
+            items = stripe_sub["items"]["data"]
+
+            if not items:
+                raise APIException("Stripe subscription has no items.")
+
+            stripe.Subscription.modify(
+                subscription.stripe_subscription_id,
+                items=[{"id": items[0]["id"], "price": new_plan.stripe_price_id}],
+                proration_behavior="create_prorations",
+            )
+        except stripe.error.StripeError as exc:
+            raise APIException(exc.user_message or str(exc))
+
+        subscription.plan = new_plan
+        subscription.save(update_fields=["plan"])
+        return subscription
+
+    @staticmethod
+    def cancel_subscription(subscription):
+        """
+        Cancel a subscription at the end of the current billing period.
+        """
+
+        try:
+            stripe.Subscription.modify(
+                subscription.stripe_subscription_id,
+                cancel_at_period_end=True,
+            )
+        except stripe.error.StripeError as exc:
+            raise APIException(exc.user_message or str(exc))
+
+        subscription.cancel_at_period_end = True
+        subscription.save(update_fields=["cancel_at_period_end"])
+
+        return subscription
