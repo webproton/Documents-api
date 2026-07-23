@@ -130,6 +130,7 @@ class StripeWebhookService:
                 "stripe_customer_id",
                 "current_period_end",
                 "cancel_at_period_end",
+                "plan",
             ]
         )
 
