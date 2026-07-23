@@ -6,6 +6,7 @@ from rest_framework import serializers
 from app.apps.documents.models import Document
 from app.apps.documents.models.document_request import DocumentRequest
 from app.apps.documents.serializers.mixins import DocumentFileValidationMixin
+from app.apps.documents.services import check_document_limit
 
 
 class AnonymousDocumentUploadSerializer(
@@ -36,6 +37,7 @@ class AnonymousDocumentUploadSerializer(
             raise serializers.ValidationError(
                 {"token": f"This request is already {doc_request.status.lower()}."}
             )
+        check_document_limit(doc_request.requester, doc_request.document_type)
 
         # We save the request object in the class
         # context to avoid repeating the request in create()

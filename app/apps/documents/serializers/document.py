@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from app.apps.documents.models import Document, DocumentType
 from app.apps.documents.serializers.mixins import DocumentFileValidationMixin
+from app.apps.documents.services import check_document_limit
 
 
 class DocumentUploadSerializer(
@@ -28,6 +29,11 @@ class DocumentUploadSerializer(
             "id",
             "status",
         ]
+
+    def validate(self, attrs):
+        user = self.context["request"].user
+        check_document_limit(user, attrs["document_type"])
+        return attrs
 
     @transaction.atomic
     def create(self, validated_data):
