@@ -43,7 +43,9 @@ urlpatterns = [
         "api/notifications/",
         include("app.apps.notifications.urls", namespace="notifications"),
     ),
-    path("api/billing/", include("app.apps.billing.urls", namespace="billing")),
+    path(
+        "api/billing/", include("app.apps.billing.urls", namespace="app.apps.billing")
+    ),
     re_path(r"^swagger/$", schema_view.with_ui("swagger", cache_timeout=0)),
     re_path(r"^redoc/$", schema_view.with_ui("redoc", cache_timeout=0)),
 ]

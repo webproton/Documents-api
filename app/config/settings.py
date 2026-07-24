@@ -269,3 +269,14 @@ BACKEND_URL = env("BACKEND_URL", default="http://localhost:8000")
 # Billing
 
 DEFAULT_CURRENCY = env("DEFAULT_CURRENCY", default="USD")
+
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
+STRIPE_SUCCESS_URL = env(
+    "STRIPE_SUCCESS_URL",
+    default="http://localhost:8000/payment/success",
+)
+
+STRIPE_CANCEL_URL = env(
+    "STRIPE_CANCEL_URL",
+    default="http://localhost:8000/payment/cancel",
+)

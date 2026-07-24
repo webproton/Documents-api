@@ -13,7 +13,7 @@ class PlanViewSet(ReadOnlyModelViewSet):
     """
 
     serializer_class = PlanSerializer
-    permission_classes = AllowAny
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         return Plan.objects.filter(is_active=True).order_by("price")

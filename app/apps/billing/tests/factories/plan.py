@@ -2,7 +2,8 @@
 from decimal import Decimal
 
 import factory
-from billing.models import Plan
+
+from app.apps.billing.models import Plan
 
 
 class PlanFactory(factory.django.DjangoModelFactory):
