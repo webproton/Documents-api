@@ -5,34 +5,22 @@ from datetime import datetime
 from django.db import transaction
 from django.utils import timezone
 
-from app.apps.billing.models import Order, StripeWebhookEvent, Subscription
+from app.apps.billing.models import Order, Subscription
 
 
 class StripeWebhookService:
     """
     Service responsible for processing Stripe webhook events.
+
+    Idempotency is guaranteed by checking the current state of the
+    affected Order/Subscription before applying changes, rather than
+    storing a separate log of processed event ids — Stripe already
+    keeps the full event history on their side.
     """
 
     @staticmethod
     @transaction.atomic
     def process(event):
-        """
-        Process a Stripe webhook event.
-
-        Prevents duplicate processing by storing Stripe event ids.
-        """
-
-        webhook_event, created = StripeWebhookEvent.objects.get_or_create(
-            stripe_event_id=event["id"],
-            defaults={
-                "event_type": event["type"],
-                "raw_payload": event,
-            },
-        )
-
-        if webhook_event.processed:
-            return
-
         handlers = {
             "checkout.session.completed": (
                 StripeWebhookService.handle_checkout_completed
@@ -51,25 +39,31 @@ class StripeWebhookService:
 
         handler(event)
 
-        webhook_event.processed = True
-        webhook_event.save(update_fields=["processed", "processed_at"])
-
     @staticmethod
     def handle_checkout_completed(event):
         """
         Handle checkout.session.completed event.
 
         Links the created Stripe objects to the pending order.
+        Idempotent: if the order already has this payment_intent, skip.
         """
 
         session = event["data"]["object"]
 
-        order = Order.objects.get(
+        order = Order.objects.select_for_update().get(
             stripe_checkout_session_id=session["id"],
         )
 
+        payment_intent_id = session.get("payment_intent")
+
+        if (
+            order.stripe_payment_intent_id
+            and order.stripe_payment_intent_id == payment_intent_id
+        ):
+            return  # already processed
+
         order.stripe_customer_id = session.get("customer")
-        order.stripe_payment_intent_id = session.get("payment_intent")
+        order.stripe_payment_intent_id = payment_intent_id
 
         # Available only for subscription Checkout Sessions.
         if order.subscription:
@@ -89,13 +83,22 @@ class StripeWebhookService:
         Handle invoice.paid event.
 
         Marks the order as paid and activates the subscription.
+        Idempotent: if an order with this stripe_invoice_id is already
+        PAID, skip.
         """
 
         invoice = event["data"]["object"]
 
-        subscription = Subscription.objects.get(
+        subscription = Subscription.objects.select_for_update().get(
             stripe_subscription_id=invoice["subscription"],
         )
+
+        if Order.objects.filter(
+            subscription=subscription,
+            stripe_invoice_id=invoice["id"],
+            status=Order.STATUS.PAID,
+        ).exists():
+            return  # already processed
 
         order = (
             Order.objects.filter(
@@ -130,7 +133,6 @@ class StripeWebhookService:
                 "stripe_customer_id",
                 "current_period_end",
                 "cancel_at_period_end",
-                "plan",
             ]
         )
 
@@ -140,13 +142,22 @@ class StripeWebhookService:
         Handle invoice.payment_failed event.
 
         Marks the order and subscription as failed.
+        Idempotent: if an order with this stripe_invoice_id is already
+        FAILED, skip.
         """
 
         invoice = event["data"]["object"]
 
-        subscription = Subscription.objects.get(
+        subscription = Subscription.objects.select_for_update().get(
             stripe_subscription_id=invoice["subscription"],
         )
+
+        if Order.objects.filter(
+            subscription=subscription,
+            stripe_invoice_id=invoice["id"],
+            status=Order.STATUS.FAILED,
+        ).exists():
+            return  # already processed
 
         order = (
             Order.objects.filter(
@@ -176,13 +187,17 @@ class StripeWebhookService:
         Handle customer.subscription.deleted event.
 
         Marks the subscription as expired.
+        Idempotent: if the subscription is already EXPIRED, skip.
         """
 
         stripe_subscription = event["data"]["object"]
 
-        subscription = Subscription.objects.get(
+        subscription = Subscription.objects.select_for_update().get(
             stripe_subscription_id=stripe_subscription["id"],
         )
+
+        if subscription.status == Subscription.STATUS.EXPIRED:
+            return  # already processed
 
         subscription.status = Subscription.STATUS.EXPIRED
         subscription.end_date = timezone.now()
