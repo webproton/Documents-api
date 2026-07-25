@@ -2,9 +2,10 @@
 import pytest
 from django.utils import timezone
 
-from app.apps.billing.models import Order, Subscription
+from app.apps.billing.models import Order, Plan, Subscription
 from app.apps.billing.services import StripeWebhookService
 from app.apps.billing.tests.factories.order import OrderFactory
+from app.apps.billing.tests.factories.plan import PlanFactory
 from app.apps.billing.tests.factories.subscription import SubscriptionFactory
 
 
@@ -145,6 +146,33 @@ def test_invoice_paid_updates_subscription_and_order():
 
     assert order.status == Order.STATUS.PAID
     assert order.stripe_invoice_id == "in_test"
+
+
+@pytest.mark.django_db
+def test_invoice_paid_applies_the_ordered_plan_to_subscription():
+    """
+    On first payment, the plan that was ordered (stored on the PENDING
+    order at checkout time) must be applied to the user's subscription.
+    """
+    pro_plan = PlanFactory(name=Plan.NAME.PRO)
+
+    subscription = SubscriptionFactory(
+        stripe_subscription_id="sub_test",
+        status=Subscription.STATUS.PENDING,
+        plan=Plan.objects.get(name=Plan.NAME.FREE),
+    )
+
+    OrderFactory(
+        subscription=subscription,
+        plan=pro_plan,
+        status=Order.STATUS.PENDING,
+    )
+
+    StripeWebhookService.process(invoice_paid_event())
+
+    subscription.refresh_from_db()
+
+    assert subscription.plan == pro_plan
 
 
 @pytest.mark.django_db
