@@ -1,4 +1,4 @@
-# test_checkout_api.py
+# app/apps/billing/tests/test_checkout_api.py
 from unittest.mock import Mock, patch
 
 import pytest
@@ -37,10 +37,12 @@ def test_checkout_returns_400_for_unknown_plan(api_client, user):
 def test_checkout_rejects_free_plan(api_client, user):
     api_client.force_authenticate(user)
 
-    plan = PlanFactory(name=Plan.NAME.FREE)
+    plan = Plan.objects.get(name=Plan.NAME.FREE)
 
     response = api_client.post(
-        reverse("app.apps.billing:checkout"), {"plan": plan.id}, format="json"
+        reverse("app.apps.billing:checkout"),
+        {"plan": plan.id},
+        format="json",
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST

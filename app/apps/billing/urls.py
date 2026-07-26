@@ -2,7 +2,12 @@
 
 from django.urls import path
 
-from app.apps.billing.views import CheckoutView, CurrentSubscriptionView, PlanViewSet
+from app.apps.billing.views import (
+    CheckoutView,
+    CurrentSubscriptionView,
+    PlanViewSet,
+    StripeWebhookView,
+)
 
 app_name = "apps.billing"
 
@@ -21,5 +26,10 @@ urlpatterns = [
         "checkout/",
         CheckoutView.as_view(),
         name="checkout",
+    ),
+    path(
+        "webhook/",
+        StripeWebhookView.as_view(),
+        name="webhook",
     ),
 ]

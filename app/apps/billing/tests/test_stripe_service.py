@@ -1,4 +1,4 @@
-# test_stripe_service.py
+# app/apps/billing/tests/test_stripe_service.py
 
 from unittest.mock import Mock, patch
 
@@ -9,6 +9,7 @@ from rest_framework.exceptions import APIException
 
 from app.apps.billing.models import Order
 from app.apps.billing.services import StripeService
+from app.apps.billing.tests.factories.order import OrderFactory
 from app.apps.billing.tests.factories.subscription import SubscriptionFactory
 
 
@@ -82,6 +83,11 @@ def test_create_checkout_session(
     mock_get_customer,
 ):
     subscription = SubscriptionFactory()
+    order = OrderFactory(
+        user=subscription.user,
+        subscription=subscription,
+        plan=subscription.plan,
+    )
 
     mock_get_customer.return_value = "cus_test"
 
@@ -93,6 +99,7 @@ def test_create_checkout_session(
     result = StripeService.create_checkout_session(
         subscription.user,
         subscription.plan,
+        order=order,
     )
 
     assert result == session
@@ -109,6 +116,12 @@ def test_create_checkout_session_handles_stripe_error(
 ):
     subscription = SubscriptionFactory()
 
+    order = OrderFactory(
+        user=subscription.user,
+        subscription=subscription,
+        plan=subscription.plan,
+    )
+
     mock_get_customer.return_value = "cus_test"
 
     mock_session_create.side_effect = stripe.error.StripeError(message="Boom")
@@ -117,6 +130,7 @@ def test_create_checkout_session_handles_stripe_error(
         StripeService.create_checkout_session(
             subscription.user,
             subscription.plan,
+            order=order,
         )
 
 

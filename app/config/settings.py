@@ -280,3 +280,5 @@ STRIPE_CANCEL_URL = env(
     "STRIPE_CANCEL_URL",
     default="http://localhost:8000/payment/cancel",
 )
+
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
