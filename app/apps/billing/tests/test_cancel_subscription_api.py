@@ -23,7 +23,9 @@ def test_cancel_subscription_requires_authentication(api_client):
 
 
 @pytest.mark.django_db
-@patch("app.apps.billing.views.cancel.StripeService.cancel_subscription")
+@patch(
+    "app.apps.billing.serializers.cancel_subscription.StripeService.cancel_subscription"
+)
 def test_cancel_subscription_success(mock_cancel, api_client, user):
     pro_plan = PlanFactory(name=Plan.NAME.PRO)
     subscription = _set_subscription(

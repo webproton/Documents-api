@@ -118,16 +118,6 @@ class StripeWebhookService:
         if order:
             order.status = Order.STATUS.PAID
             order.stripe_invoice_id = invoice["id"]
-            order.save(
-                update_fields=[
-                    "status",
-                    "stripe_invoice_id",
-                ]
-            )
-
-        if order:
-            order.status = Order.STATUS.PAID
-            order.stripe_invoice_id = invoice["id"]
             order.save(update_fields=["status", "stripe_invoice_id"])
 
             subscription.plan = order.plan
@@ -146,6 +136,7 @@ class StripeWebhookService:
                 "stripe_customer_id",
                 "current_period_end",
                 "cancel_at_period_end",
+                "plan",
             ]
         )
 
