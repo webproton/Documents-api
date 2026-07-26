@@ -1,9 +1,11 @@
+# app/apps/billing/tests/test_webhook_service.py
 import pytest
 from django.utils import timezone
 
-from app.apps.billing.models import Order, StripeWebhookEvent, Subscription
+from app.apps.billing.models import Order, Plan, Subscription
 from app.apps.billing.services import StripeWebhookService
 from app.apps.billing.tests.factories.order import OrderFactory
+from app.apps.billing.tests.factories.plan import PlanFactory
 from app.apps.billing.tests.factories.subscription import SubscriptionFactory
 
 
@@ -96,18 +98,44 @@ def test_checkout_completed_updates_order():
 
     assert order.stripe_customer_id == "cus_test"
     assert order.stripe_payment_intent_id == "pi_test"
-    assert StripeWebhookEvent.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_checkout_completed_is_idempotent():
+    """
+    Reprocessing of the same checkout event
+    should not crash and must not overwrite the subscription again
+    """
+    subscription = SubscriptionFactory(stripe_subscription_id=None)
+    order = OrderFactory(
+        subscription=subscription,
+        stripe_checkout_session_id="cs_test",
+    )
+
+    event = checkout_completed_event()
+
+    StripeWebhookService.process(event)
+    StripeWebhookService.process(event)  # double
+
+    order.refresh_from_db()
+    subscription.refresh_from_db()
+
+    assert order.stripe_payment_intent_id == "pi_test"
+    assert subscription.stripe_subscription_id == "sub_test"
 
 
 @pytest.mark.django_db
 def test_invoice_paid_updates_subscription_and_order():
+    pro_plan = PlanFactory(name=Plan.NAME.PRO)
     subscription = SubscriptionFactory(
         stripe_subscription_id="sub_test",
         status=Subscription.STATUS.PENDING,
+        plan=Plan.objects.get(name=Plan.NAME.FREE),
     )
 
     order = OrderFactory(
         subscription=subscription,
+        plan=pro_plan,
         status=Order.STATUS.PENDING,
     )
 
@@ -117,12 +145,68 @@ def test_invoice_paid_updates_subscription_and_order():
     order.refresh_from_db()
 
     assert subscription.status == Subscription.STATUS.ACTIVE
+    assert subscription.plan == pro_plan
     assert subscription.stripe_customer_id == "cus_test"
     assert subscription.current_period_end is not None
     assert subscription.cancel_at_period_end is False
 
     assert order.status == Order.STATUS.PAID
     assert order.stripe_invoice_id == "in_test"
+
+
+@pytest.mark.django_db
+def test_invoice_paid_applies_the_ordered_plan_to_subscription():
+    """
+    On first payment, the plan that was ordered (stored on the PENDING
+    order at checkout time) must be applied to the user's subscription.
+    """
+    pro_plan = PlanFactory(name=Plan.NAME.PRO)
+
+    subscription = SubscriptionFactory(
+        stripe_subscription_id="sub_test",
+        status=Subscription.STATUS.PENDING,
+        plan=Plan.objects.get(name=Plan.NAME.FREE),
+    )
+
+    OrderFactory(
+        subscription=subscription,
+        plan=pro_plan,
+        status=Order.STATUS.PENDING,
+    )
+
+    StripeWebhookService.process(invoice_paid_event())
+
+    subscription.refresh_from_db()
+
+    assert subscription.plan == pro_plan
+
+
+@pytest.mark.django_db
+def test_invoice_paid_is_idempotent():
+    """
+    Re-invoice.paid should not attempt
+    to search for the second non-existent
+    PENDING Order and crash
+    """
+    subscription = SubscriptionFactory(
+        stripe_subscription_id="sub_test",
+        status=Subscription.STATUS.PENDING,
+    )
+    order = OrderFactory(
+        subscription=subscription,
+        status=Order.STATUS.PENDING,
+    )
+
+    event = invoice_paid_event()
+
+    StripeWebhookService.process(event)
+    StripeWebhookService.process(event)  # double – must not fall
+
+    order.refresh_from_db()
+    subscription.refresh_from_db()
+
+    assert order.status == Order.STATUS.PAID
+    assert subscription.status == Subscription.STATUS.ACTIVE
 
 
 @pytest.mark.django_db
@@ -165,7 +249,28 @@ def test_subscription_deleted_expires_subscription():
 
 
 @pytest.mark.django_db
-def test_duplicate_event_is_processed_once():
+def test_duplicate_subscription_deleted_event_is_processed_once():
+    """Resubscribe.deleted should not overwrite end_date"""
+    subscription = SubscriptionFactory(
+        stripe_subscription_id="sub_test",
+        status=Subscription.STATUS.ACTIVE,
+    )
+
+    event = subscription_deleted_event(event_id="evt_duplicate")
+
+    StripeWebhookService.process(event)
+    subscription.refresh_from_db()
+    first_end_date = subscription.end_date
+
+    StripeWebhookService.process(event)  # double, statys already EXPIRED
+    subscription.refresh_from_db()
+
+    assert subscription.status == Subscription.STATUS.EXPIRED
+    assert subscription.end_date == first_end_date  # Not overwritten repeatedly
+
+
+@pytest.mark.django_db
+def test_duplicate_invoice_failed_event_is_processed_once():
     subscription = SubscriptionFactory(
         stripe_subscription_id="sub_test",
         status=Subscription.STATUS.ACTIVE,
@@ -179,11 +284,10 @@ def test_duplicate_event_is_processed_once():
     event = invoice_failed_event(event_id="evt_duplicate")
 
     StripeWebhookService.process(event)
-    StripeWebhookService.process(event)
+    StripeWebhookService.process(event)  # double
 
     subscription.refresh_from_db()
     order.refresh_from_db()
 
-    assert StripeWebhookEvent.objects.count() == 1
     assert order.status == Order.STATUS.FAILED
     assert subscription.status == Subscription.STATUS.FAILED

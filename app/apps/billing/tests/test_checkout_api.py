@@ -1,4 +1,4 @@
-# test_checkout_api.py
+# app/apps/billing/tests/test_checkout_api.py
 from unittest.mock import Mock, patch
 
 import pytest

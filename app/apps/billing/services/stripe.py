@@ -1,12 +1,28 @@
 # payments/services.py
 import stripe
 from django.conf import settings
-from rest_framework.exceptions import APIException
+from rest_framework import status
+from rest_framework.exceptions import APIException, ValidationError
 
 from app.apps.billing.models import Order, Plan
 
 # Initialize Stripe with your secret key
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+class StripeServiceError(APIException):
+    """
+    Raised when a call to the Stripe API fails.
+
+    This is an upstream service failure, not a bug in our backend —
+    hence 502, not the default 500 from a bare APIException.
+    """
+
+    status_code = status.HTTP_502_BAD_GATEWAY
+    default_detail = (
+        "Payment provider is temporarily unavailable. Please try again later."
+    )
+    default_code = "stripe_unavailable"
 
 
 class StripeService:
@@ -30,7 +46,7 @@ class StripeService:
                 },
             )
         except stripe.error.StripeError as exc:
-            raise APIException(exc.user_message or str(exc))
+            raise StripeServiceError(exc.user_message or str(exc))
 
         subscription.stripe_customer_id = customer.id
         subscription.save(update_fields=["stripe_customer_id"])
@@ -66,7 +82,7 @@ class StripeService:
                 idempotency_key=f"checkout-{order.id}",
             )
         except stripe.error.StripeError as exc:
-            raise APIException(exc.user_message or str(exc))
+            raise StripeServiceError(exc.user_message or str(exc))
 
     @staticmethod
     def create_order(user, plan):
@@ -95,10 +111,12 @@ class StripeService:
         """
 
         if plan.name == Plan.NAME.FREE:
-            raise APIException("FREE plan cannot be purchased.")
+            raise ValidationError({"plan": ["The FREE plan cannot be purchased."]})
 
         if not plan.stripe_price_id:
-            raise APIException("Stripe price is not configured for this plan.")
+            raise ValidationError(
+                {"plan": ["Stripe price is not configured for this plan."]}
+            )
 
         # close hanging PENDING orders instead of accumulating duplicates
         Order.objects.filter(user=user, status=Order.STATUS.PENDING).delete()

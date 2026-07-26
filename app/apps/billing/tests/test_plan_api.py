@@ -1,4 +1,4 @@
-# test_plan_api.py
+# app/apps/billing/tests/test_plan_api.py
 import pytest
 from django.urls import reverse
 from rest_framework import status
