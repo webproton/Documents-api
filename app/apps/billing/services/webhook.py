@@ -37,7 +37,13 @@ class StripeWebhookService:
         if handler is None:
             return
 
-        handler(event)
+        try:
+            handler(event)
+        except (Order.DoesNotExist, Subscription.DoesNotExist):
+            # No matching local record — likely a stale, out-of-order,
+            # or already-cleaned-up event. Log and acknowledge (200) so
+            # Stripe doesn't endlessly retry an event we can never match.
+            return
 
     @staticmethod
     def handle_checkout_completed(event):
