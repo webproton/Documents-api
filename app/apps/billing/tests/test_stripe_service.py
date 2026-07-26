@@ -1,4 +1,4 @@
-# test_stripe_service.py
+# app/apps/billing/tests/test_stripe_service.py
 
 from unittest.mock import Mock, patch
 
