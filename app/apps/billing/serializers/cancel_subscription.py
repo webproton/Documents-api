@@ -13,13 +13,13 @@ class CancelSubscriptionSerializer(serializers.Serializer):
     """
 
     def validate(self, attrs):
-        subscription = Subscription.objects.filter(
-            user=self.context["request"].user
-        ).first()
+        try:
+            subscription = self.context["request"].user.subscription
+        except Subscription.DoesNotExist:
+            raise serializers.ValidationError("No active paid subscription to cancel.")
 
         if (
-            subscription is None
-            or subscription.status != Subscription.STATUS.ACTIVE
+            subscription.status != Subscription.STATUS.ACTIVE
             or not subscription.stripe_subscription_id
         ):
             raise serializers.ValidationError("No active paid subscription to cancel.")

@@ -24,4 +24,9 @@ class CheckoutSerializer(serializers.Serializer):
         if plan.name == Plan.NAME.FREE:
             raise serializers.ValidationError("The FREE plan cannot be purchased.")
 
+        if not plan.stripe_price_id:
+            raise serializers.ValidationError(
+                "Stripe price is not configured for this plan."
+            )
+
         return plan

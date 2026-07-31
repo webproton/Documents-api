@@ -2,9 +2,9 @@
 import stripe
 from django.conf import settings
 from rest_framework import status
-from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.exceptions import APIException
 
-from app.apps.billing.models import Order, Plan
+from app.apps.billing.models import Order
 
 # Initialize Stripe with your secret key
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -110,14 +110,6 @@ class StripeService:
         Links the created Checkout Session to the order.
         """
 
-        if plan.name == Plan.NAME.FREE:
-            raise ValidationError({"plan": ["The FREE plan cannot be purchased."]})
-
-        if not plan.stripe_price_id:
-            raise ValidationError(
-                {"plan": ["Stripe price is not configured for this plan."]}
-            )
-
         # close hanging PENDING orders instead of accumulating duplicates
         Order.objects.filter(user=user, status=Order.STATUS.PENDING).delete()
 
@@ -136,26 +128,6 @@ class StripeService:
 
     @staticmethod
     def change_plan(subscription, new_plan):
-        if not subscription.stripe_subscription_id:
-            raise ValidationError(
-                {
-                    "detail": "No active paid subscription."
-                    "Use /checkout/ to purchase a plan."
-                }
-            )
-
-        if subscription.plan_id == new_plan.id:
-            raise ValidationError(
-                {"plan": ["You are already subscribed to this plan."]}
-            )
-
-        if new_plan.name == Plan.NAME.FREE:
-            raise ValidationError({"plan": ["Cannot change to FREE plan."]})
-
-        if not new_plan.stripe_price_id:
-            raise ValidationError(
-                {"plan": ["Stripe price is not configured for this plan."]}
-            )
 
         try:
             stripe_sub = stripe.Subscription.retrieve(

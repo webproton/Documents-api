@@ -23,13 +23,19 @@ class ChangePlanSerializer(serializers.Serializer):
     def validate_plan(self, plan):
         if plan.name == Plan.NAME.FREE:
             raise serializers.ValidationError("The FREE plan cannot be purchased.")
+
+        if not plan.stripe_price_id:
+            raise serializers.ValidationError(
+                "Stripe price is not configured for this plan."
+            )
+
         return plan
 
     def validate(self, attrs):
         subscription = self.context["request"].user.subscription
         plan = attrs["plan"]
 
-        if subscription.plan_id == plan.id:
+        if subscription.stripe_subscription_id and subscription.plan_id == plan.id:
             raise serializers.ValidationError(
                 {"plan": ["You are already subscribed to this plan."]}
             )

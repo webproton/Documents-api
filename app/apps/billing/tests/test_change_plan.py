@@ -70,7 +70,7 @@ def test_change_plan_rejects_same_plan(api_client, user):
 
 
 @pytest.mark.django_db
-@patch("app.apps.billing.views.change_plan.StripeService.start_checkout")
+@patch("app.apps.billing.serializers.change_plan.StripeService.start_checkout")
 def test_change_plan_without_stripe_subscription_falls_back_to_checkout(
     mock_start_checkout, api_client, user
 ):
@@ -155,7 +155,7 @@ def test_change_plan_returns_error_when_stripe_fails(mock_retrieve, api_client, 
         format="json",
     )
 
-    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert response.status_code == status.HTTP_502_BAD_GATEWAY
 
 
 @pytest.mark.django_db
