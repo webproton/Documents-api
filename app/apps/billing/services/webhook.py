@@ -203,11 +203,18 @@ class StripeWebhookService:
         if subscription.status == Subscription.STATUS.EXPIRED:
             return  # already processed
 
-        subscription.status = Subscription.STATUS.EXPIRED
-        subscription.end_date = timezone.now()
+        subscription.status = Subscription.STATUS.ACTIVE
         subscription.cancel_at_period_end = False
+        subscription.stripe_subscription_id = None
+        subscription.current_period_end = None
         subscription.plan = Plan.get_free_plan()
 
         subscription.save(
-            update_fields=["status", "end_date", "cancel_at_period_end", "plan"]
+            update_fields=[
+                "status",
+                "stripe_subscription_id",
+                "cancel_at_period_end",
+                "current_period_end",
+                "plan",
+            ]
         )

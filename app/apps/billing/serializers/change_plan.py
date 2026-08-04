@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from app.apps.billing.models import Plan
+from app.apps.billing.models import Plan, Subscription
 from app.apps.billing.serializers.subscription import SubscriptionSerializer
 from app.apps.billing.services import StripeService
 
@@ -32,7 +32,11 @@ class ChangePlanSerializer(serializers.Serializer):
         return plan
 
     def validate(self, attrs):
-        subscription = self.context["request"].user.subscription
+        try:
+            subscription = self.context["request"].user.subscription
+        except Subscription.DoesNotExist:
+            raise serializers.ValidationError("No subscription found for this user.")
+
         plan = attrs["plan"]
 
         if subscription.stripe_subscription_id and subscription.plan_id == plan.id:
