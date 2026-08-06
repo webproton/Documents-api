@@ -12,6 +12,8 @@ from app.apps.billing.tests.factories.plan import PlanFactory
 def _set_subscription(user, **fields):
     updated = Subscription.objects.filter(user=user).update(**fields)
     assert updated == 1, "Subscription row was not found/updated for user"
+    if hasattr(user, "_state") and "subscription" in user._state.fields_cache:
+        del user._state.fields_cache["subscription"]
     return Subscription.objects.get(user=user)
 
 
@@ -23,7 +25,9 @@ def test_cancel_subscription_requires_authentication(api_client):
 
 
 @pytest.mark.django_db
-@patch("app.apps.billing.views.cancel.StripeService.cancel_subscription")
+@patch(
+    "app.apps.billing.serializers.cancel_subscription.StripeService.cancel_subscription"
+)
 def test_cancel_subscription_success(mock_cancel, api_client, user):
     pro_plan = PlanFactory(name=Plan.NAME.PRO)
     subscription = _set_subscription(
@@ -37,6 +41,7 @@ def test_cancel_subscription_success(mock_cancel, api_client, user):
     mock_cancel.return_value = subscription
 
     response = api_client.post(reverse("app.apps.billing:cancel-subscription"))
+    print(response.json())  # диагностика — покажет реальную причину 400
 
     assert response.status_code == status.HTTP_200_OK
     mock_cancel.assert_called_once()

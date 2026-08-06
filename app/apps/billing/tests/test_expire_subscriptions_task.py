@@ -11,21 +11,24 @@ from app.apps.billing.tests.factories.subscription import SubscriptionFactory
 
 
 @pytest.mark.django_db
-def test_expire_subscriptions_expires_past_period_end():
+def test_expire_subscriptions_downgrades_to_free_plan_past_period_end():
     pro_plan = PlanFactory(name=Plan.NAME.PRO)
     subscription = SubscriptionFactory(
         plan=pro_plan,
         status=Subscription.STATUS.ACTIVE,
         cancel_at_period_end=True,
         current_period_end=timezone.now() - timedelta(days=1),
+        stripe_subscription_id="sub_test",
     )
 
     expire_subscriptions()
 
     subscription.refresh_from_db()
-    assert subscription.status == Subscription.STATUS.EXPIRED
+    assert subscription.status == Subscription.STATUS.ACTIVE
     assert subscription.plan == Plan.objects.get(name=Plan.NAME.FREE)
-    assert subscription.end_date is not None
+    assert subscription.cancel_at_period_end is False
+    assert subscription.stripe_subscription_id is None
+    assert subscription.current_period_end is None
 
 
 @pytest.mark.django_db
@@ -59,13 +62,17 @@ def test_expire_subscriptions_ignores_period_not_ended():
 
     subscription.refresh_from_db()
     assert subscription.status == Subscription.STATUS.ACTIVE
+    assert subscription.plan == pro_plan
 
 
 @pytest.mark.django_db
-def test_expire_subscriptions_ignores_already_expired():
+def test_expire_subscriptions_ignores_non_active_subscription():
+    """A CANCELED/FAILED subscription is not touched by this task —
+    only ACTIVE ones pending downgrade are matched."""
+    pro_plan = PlanFactory(name=Plan.NAME.PRO)
     SubscriptionFactory(
-        plan=PlanFactory(name=Plan.NAME.PRO),
-        status=Subscription.STATUS.EXPIRED,
+        plan=pro_plan,
+        status=Subscription.STATUS.CANCELED,
         cancel_at_period_end=True,
         current_period_end=timezone.now() - timedelta(days=1),
     )

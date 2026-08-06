@@ -1,4 +1,4 @@
-# test_checkout_serializer.py
+# app/apps/billing/tests/test_checkout_serializer.py
 import pytest
 
 from app.apps.billing.models import Plan

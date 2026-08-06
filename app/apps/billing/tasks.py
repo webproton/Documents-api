@@ -17,7 +17,8 @@ def expire_subscriptions():
         cancel_at_period_end=True,
         current_period_end__lte=timezone.now(),
     ).update(
-        status=Subscription.STATUS.EXPIRED,
-        end_date=timezone.now(),
         plan=free_plan,
+        cancel_at_period_end=False,
+        stripe_subscription_id=None,
+        current_period_end=None,
     )

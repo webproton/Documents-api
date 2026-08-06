@@ -1,12 +1,28 @@
 # payments/services.py
 import stripe
 from django.conf import settings
+from rest_framework import status
 from rest_framework.exceptions import APIException
 
-from app.apps.billing.models import Order, Plan
+from app.apps.billing.models import Order
 
 # Initialize Stripe with your secret key
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+class StripeServiceError(APIException):
+    """
+    Raised when a call to the Stripe API fails.
+
+    This is an upstream service failure, not a bug in our backend —
+    hence 502, not the default 500 from a bare APIException.
+    """
+
+    status_code = status.HTTP_502_BAD_GATEWAY
+    default_detail = (
+        "Payment provider is temporarily unavailable. Please try again later."
+    )
+    default_code = "stripe_unavailable"
 
 
 class StripeService:
@@ -30,7 +46,7 @@ class StripeService:
                 },
             )
         except stripe.error.StripeError as exc:
-            raise APIException(exc.user_message or str(exc))
+            raise StripeServiceError(exc.user_message or str(exc))
 
         subscription.stripe_customer_id = customer.id
         subscription.save(update_fields=["stripe_customer_id"])
@@ -66,7 +82,7 @@ class StripeService:
                 idempotency_key=f"checkout-{order.id}",
             )
         except stripe.error.StripeError as exc:
-            raise APIException(exc.user_message or str(exc))
+            raise StripeServiceError(exc.user_message or str(exc))
 
     @staticmethod
     def create_order(user, plan):
@@ -94,12 +110,6 @@ class StripeService:
         Links the created Checkout Session to the order.
         """
 
-        if plan.name == Plan.NAME.FREE:
-            raise APIException("FREE plan cannot be purchased.")
-
-        if not plan.stripe_price_id:
-            raise APIException("Stripe price is not configured for this plan.")
-
         # close hanging PENDING orders instead of accumulating duplicates
         Order.objects.filter(user=user, status=Order.STATUS.PENDING).delete()
 
@@ -118,19 +128,6 @@ class StripeService:
 
     @staticmethod
     def change_plan(subscription, new_plan):
-        if not subscription.stripe_subscription_id:
-            raise APIException(
-                "No active paid subscription. Use /checkout/ to purchase a plan."
-            )
-
-        if subscription.plan_id == new_plan.id:
-            raise APIException("You are already subscribed to this plan.")
-
-        if new_plan.name == Plan.NAME.FREE:
-            raise APIException("Cannot change to FREE plan.")
-
-        if not new_plan.stripe_price_id:
-            raise APIException("Stripe price is not configured for this plan.")
 
         try:
             stripe_sub = stripe.Subscription.retrieve(
@@ -139,7 +136,7 @@ class StripeService:
             items = stripe_sub["items"]["data"]
 
             if not items:
-                raise APIException("Stripe subscription has no items.")
+                raise StripeServiceError("Stripe subscription has no items.")
 
             stripe.Subscription.modify(
                 subscription.stripe_subscription_id,
@@ -147,7 +144,7 @@ class StripeService:
                 proration_behavior="create_prorations",
             )
         except stripe.error.StripeError as exc:
-            raise APIException(exc.user_message or str(exc))
+            raise StripeServiceError(exc.user_message or str(exc))
 
         subscription.plan = new_plan
         subscription.save(update_fields=["plan"])
@@ -165,7 +162,7 @@ class StripeService:
                 cancel_at_period_end=True,
             )
         except stripe.error.StripeError as exc:
-            raise APIException(exc.user_message or str(exc))
+            raise StripeServiceError(exc.user_message or str(exc))
 
         subscription.cancel_at_period_end = True
         subscription.save(update_fields=["cancel_at_period_end"])
