@@ -9,6 +9,7 @@ from app.apps.billing.models import Plan
 class PlanFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Plan
+        django_get_or_create = ("name",)
 
     name = Plan.NAME.PRO
     description = factory.Faker("sentence")

@@ -2,9 +2,9 @@
 import stripe
 from django.conf import settings
 from rest_framework import status
-from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.exceptions import APIException
 
-from app.apps.billing.models import Order, Plan
+from app.apps.billing.models import Order
 
 # Initialize Stripe with your secret key
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -110,14 +110,6 @@ class StripeService:
         Links the created Checkout Session to the order.
         """
 
-        if plan.name == Plan.NAME.FREE:
-            raise ValidationError({"plan": ["The FREE plan cannot be purchased."]})
-
-        if not plan.stripe_price_id:
-            raise ValidationError(
-                {"plan": ["Stripe price is not configured for this plan."]}
-            )
-
         # close hanging PENDING orders instead of accumulating duplicates
         Order.objects.filter(user=user, status=Order.STATUS.PENDING).delete()
 
@@ -133,3 +125,46 @@ class StripeService:
         order.save(update_fields=["stripe_checkout_session_id"])
 
         return session
+
+    @staticmethod
+    def change_plan(subscription, new_plan):
+
+        try:
+            stripe_sub = stripe.Subscription.retrieve(
+                subscription.stripe_subscription_id
+            )
+            items = stripe_sub["items"]["data"]
+
+            if not items:
+                raise StripeServiceError("Stripe subscription has no items.")
+
+            stripe.Subscription.modify(
+                subscription.stripe_subscription_id,
+                items=[{"id": items[0]["id"], "price": new_plan.stripe_price_id}],
+                proration_behavior="create_prorations",
+            )
+        except stripe.error.StripeError as exc:
+            raise StripeServiceError(exc.user_message or str(exc))
+
+        subscription.plan = new_plan
+        subscription.save(update_fields=["plan"])
+        return subscription
+
+    @staticmethod
+    def cancel_subscription(subscription):
+        """
+        Cancel a subscription at the end of the current billing period.
+        """
+
+        try:
+            stripe.Subscription.modify(
+                subscription.stripe_subscription_id,
+                cancel_at_period_end=True,
+            )
+        except stripe.error.StripeError as exc:
+            raise StripeServiceError(exc.user_message or str(exc))
+
+        subscription.cancel_at_period_end = True
+        subscription.save(update_fields=["cancel_at_period_end"])
+
+        return subscription

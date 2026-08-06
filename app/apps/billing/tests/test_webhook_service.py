@@ -232,10 +232,12 @@ def test_invoice_failed_updates_subscription_and_order():
 
 
 @pytest.mark.django_db
-def test_subscription_deleted_expires_subscription():
+def test_subscription_deleted_downgrades_to_free_plan():
+    pro_plan = PlanFactory(name=Plan.NAME.PRO)
     subscription = SubscriptionFactory(
         stripe_subscription_id="sub_test",
         status=Subscription.STATUS.ACTIVE,
+        plan=pro_plan,
         cancel_at_period_end=True,
     )
 
@@ -243,30 +245,33 @@ def test_subscription_deleted_expires_subscription():
 
     subscription.refresh_from_db()
 
-    assert subscription.status == Subscription.STATUS.EXPIRED
-    assert subscription.end_date is not None
+    assert subscription.status == Subscription.STATUS.ACTIVE
+    assert subscription.plan == Plan.objects.get(name=Plan.NAME.FREE)
+    assert subscription.stripe_subscription_id is None
     assert subscription.cancel_at_period_end is False
 
 
 @pytest.mark.django_db
 def test_duplicate_subscription_deleted_event_is_processed_once():
-    """Resubscribe.deleted should not overwrite end_date"""
+    """A second identical event must be a no-op — after the first call
+    the subscription no longer has a stripe_subscription_id to match on"""
+    pro_plan = PlanFactory(name=Plan.NAME.PRO)
     subscription = SubscriptionFactory(
         stripe_subscription_id="sub_test",
         status=Subscription.STATUS.ACTIVE,
+        plan=pro_plan,
     )
 
     event = subscription_deleted_event(event_id="evt_duplicate")
 
     StripeWebhookService.process(event)
     subscription.refresh_from_db()
-    first_end_date = subscription.end_date
+    assert subscription.plan == Plan.objects.get(name=Plan.NAME.FREE)
+    assert subscription.stripe_subscription_id is None
 
-    StripeWebhookService.process(event)  # double, statys already EXPIRED
+    StripeWebhookService.process(event)
     subscription.refresh_from_db()
-
-    assert subscription.status == Subscription.STATUS.EXPIRED
-    assert subscription.end_date == first_end_date  # Not overwritten repeatedly
+    assert subscription.plan == Plan.objects.get(name=Plan.NAME.FREE)
 
 
 @pytest.mark.django_db
