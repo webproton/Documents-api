@@ -5,11 +5,16 @@ from rest_framework import serializers
 
 from app.apps.documents.models import Document
 from app.apps.documents.models.document_request import DocumentRequest
-from app.apps.documents.serializers.mixins import DocumentFileValidationMixin
+from app.apps.documents.serializers.mixins import (
+    CheckDocumentLimitSerializerMixin,
+    DocumentFileValidationMixin,
+)
 
 
 class AnonymousDocumentUploadSerializer(
-    DocumentFileValidationMixin, serializers.ModelSerializer
+    CheckDocumentLimitSerializerMixin,
+    DocumentFileValidationMixin,
+    serializers.ModelSerializer,
 ):
     """
     Serializer for unauthenticated external users uploading a file via token.
@@ -36,6 +41,7 @@ class AnonymousDocumentUploadSerializer(
             raise serializers.ValidationError(
                 {"token": f"This request is already {doc_request.status.lower()}."}
             )
+        self.validate_document_upload_limit(doc_request.requester)
 
         # We save the request object in the class
         # context to avoid repeating the request in create()

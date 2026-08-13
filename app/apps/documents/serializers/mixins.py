@@ -3,7 +3,48 @@
 import os
 
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
+
+from app.apps.documents.models import Document
+
+
+class CheckDocumentLimitSerializerMixin:
+    """
+    Mixin that validates the user hasn't exceeded their plan's
+    document upload limit.
+
+    Counts ALL documents ever uploaded by the user (both ACTIVE and
+    REPLACED) — counting only ACTIVE documents would let a user upload
+    unlimited documents by repeatedly replacing the same folder.
+    """
+
+    def validate_document_upload_limit(self, user):
+        try:
+            plan = user.subscription.plan
+        except ObjectDoesNotExist:
+            plan = None
+
+        limit = plan.document_limit if plan else None
+        if limit is None:
+            return  # unlimited or no plan configured
+
+        # count all the documents of this user in the database
+        # — without filtering by status.
+        # That is, both ACTIVE and REPLACED
+        total_documents = Document.objects.filter(user=user).count()
+
+        # If the user already has more or equal
+        # to the limit of documents, block the upload
+        if total_documents >= limit:
+            raise serializers.ValidationError(
+                {
+                    "document_type": [
+                        f"Document limit reached ({limit}). "
+                        "Upgrade your plan to upload more documents."
+                    ]
+                }
+            )
 
 
 class DocumentFileValidationMixin:

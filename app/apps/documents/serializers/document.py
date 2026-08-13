@@ -3,11 +3,16 @@ from django.db import transaction
 from rest_framework import serializers
 
 from app.apps.documents.models import Document, DocumentType
-from app.apps.documents.serializers.mixins import DocumentFileValidationMixin
+from app.apps.documents.serializers.mixins import (
+    CheckDocumentLimitSerializerMixin,
+    DocumentFileValidationMixin,
+)
 
 
 class DocumentUploadSerializer(
-    DocumentFileValidationMixin, serializers.ModelSerializer
+    CheckDocumentLimitSerializerMixin,
+    DocumentFileValidationMixin,
+    serializers.ModelSerializer,
 ):
     """
     Serializer handling user document uploads.
@@ -28,6 +33,11 @@ class DocumentUploadSerializer(
             "id",
             "status",
         ]
+
+    def validate(self, attrs):
+        user = self.context["request"].user
+        self.validate_document_upload_limit(user)
+        return attrs
 
     @transaction.atomic
     def create(self, validated_data):
@@ -59,7 +69,7 @@ class DocumentUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = ["id", "name", "status", "document_type", "expiration_date", "file"]
-        read_only_fields = ["id", "status", "document_type"]
+        read_only_fields = ["id", "status", "document_type", "file"]
 
 
 class DocumentTypePublicSerializer(serializers.ModelSerializer):

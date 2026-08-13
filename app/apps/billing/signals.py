@@ -14,10 +14,8 @@ def create_free_subscription(sender, instance, created, **kwargs):
     if Subscription.objects.filter(user=instance).exists():
         return
 
-    free_plan = Plan.objects.get(name=Plan.NAME.FREE)
-
     Subscription.objects.create(
         user=instance,
-        plan=free_plan,
+        plan=Plan.get_free_plan(),
         status=Subscription.STATUS.ACTIVE,
     )
