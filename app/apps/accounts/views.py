@@ -33,25 +33,37 @@ class ProfileAPIView(generics.RetrieveUpdateAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
+        """Return read or update serializer based on request method."""
+
         if self.request.method in ("PUT", "PATCH"):
             return UpdateProfileSerializer
         return ProfileSerializer
 
     def get_object(self):
+        """Return the currently authenticated user."""
+
         return self.request.user
 
 
 class MeAPIView(APIView):
+    """Return the current user's ID."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        """Return the authenticated user's ID."""
+
         return Response({"id": request.user.id})
 
 
 class LogoutAPIView(APIView):
+    """Blacklist the provided refresh token."""
+
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        """Invalidate the user's refresh token."""
+
         serializer = LogoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -71,6 +83,8 @@ class LogoutAPIView(APIView):
 
 
 class LoginAPIView(TokenObtainPairView):
+    """Authenticate a user and return JWT tokens."""
+
     serializer_class = LoginSerializer
 
 
@@ -104,6 +118,8 @@ class RegisterAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        """Validate registration data and create a new user."""
+
         # Validate input data
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -150,6 +166,8 @@ class ConfirmEmailAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        """Validate the confirmation token and activate the user."""
+
         # 1. Validate input token format (UUID)
         serializer = ConfirmEmailSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
