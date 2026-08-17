@@ -208,3 +208,71 @@ def test_profile_cannot_modify_is_staff(api_client, user):
 
     assert response.status_code == status.HTTP_200_OK
     assert user.is_staff is False
+
+
+@pytest.mark.django_db
+def test_update_profile_changes_password_with_correct_current_password(
+    api_client, user
+):
+    user.set_password("OldPass123!")
+    user.save()
+    api_client.force_authenticate(user=user)
+
+    url = reverse("apps.accounts:profile")
+    response = api_client.patch(
+        url,
+        {"current_password": "OldPass123!", "new_password": "NewSecurePass456!"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    user.refresh_from_db()
+    assert user.check_password("NewSecurePass456!")
+
+
+@pytest.mark.django_db
+def test_update_profile_rejects_wrong_current_password(api_client, user):
+    user.set_password("OldPass123!")
+    user.save()
+    api_client.force_authenticate(user=user)
+
+    url = reverse("apps.accounts:profile")
+    response = api_client.patch(
+        url,
+        {"current_password": "WrongPass", "new_password": "NewSecurePass456!"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "current_password" in response.data["errors"]
+
+
+@pytest.mark.django_db
+def test_update_profile_rejects_new_password_without_current(api_client, user):
+    api_client.force_authenticate(user=user)
+
+    url = reverse("apps.accounts:profile")
+    response = api_client.patch(
+        url,
+        {"new_password": "NewSecurePass456!"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "current_password" in response.data["errors"]
+
+
+@pytest.mark.django_db
+def test_update_profile_without_password_still_updates_name(api_client, user):
+    api_client.force_authenticate(user=user)
+
+    url = reverse("apps.accounts:profile")
+    response = api_client.patch(
+        url,
+        {"first_name": "NewName"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    user.refresh_from_db()
+    assert user.first_name == "NewName"
