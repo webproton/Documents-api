@@ -1,3 +1,4 @@
+# app/apps/accounts/tests/test_auth.py
 from datetime import timedelta
 from unittest.mock import patch
 
