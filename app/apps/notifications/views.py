@@ -30,6 +30,8 @@ class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
         """
         We guarantee data security: a regular user sees only THEIR notifications.
         """
+        if getattr(self, "swagger_fake_view", False):
+            return Notification.objects.none()
         return Notification.objects.filter(user=self.request.user).select_related(
             "document"
         )

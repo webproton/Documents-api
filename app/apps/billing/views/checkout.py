@@ -1,4 +1,6 @@
 # app/apps/billing/views/checkout.py
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -18,6 +20,26 @@ class CheckoutView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @swagger_auto_schema(
+        operation_summary="Create Stripe Checkout session",
+        operation_description=(
+            "Validate the selected subscription plan and create "
+            "a Stripe Checkout session."
+        ),
+        request_body=CheckoutSerializer,
+        responses={
+            200: openapi.Response(
+                description="Checkout session created successfully.",
+                examples={
+                    "application/json": {
+                        "checkout_url": "https://checkout.stripe.com/...",
+                        "session_id": "cs_test_...",
+                    }
+                },
+            ),
+            400: "Invalid or unavailable subscription plan.",
+        },
+    )
     def post(self, request, *args, **kwargs):
         serializer = CheckoutSerializer(
             data=request.data,
