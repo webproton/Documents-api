@@ -18,7 +18,6 @@ from rest_framework import (
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from app.apps.documents.filters import DocumentFilter
 from app.apps.documents.models import Document, DocumentRequest, DocumentType
@@ -32,39 +31,8 @@ from app.apps.documents.serializers import (
     FolderDocumentSerializer,
     FolderListSerializer,
 )
+from app.apps.documents.serializers.mixins import DetailMessageSerializer
 from app.apps.notifications.tasks import send_notification_email_task
-
-document_upload_parameters = [
-    openapi.Parameter(
-        "name",
-        openapi.IN_FORM,
-        description="Document name",
-        type=openapi.TYPE_STRING,
-        required=True,
-    ),
-    openapi.Parameter(
-        "document_type",
-        openapi.IN_FORM,
-        description="Document type ID",
-        type=openapi.TYPE_INTEGER,
-        required=True,
-    ),
-    openapi.Parameter(
-        "expiration_date",
-        openapi.IN_FORM,
-        description="Document expiration date",
-        type=openapi.TYPE_STRING,
-        format="date",
-        required=True,
-    ),
-    openapi.Parameter(
-        "file",
-        openapi.IN_FORM,
-        description="Document file (xls, csv, pdf)",
-        type=openapi.TYPE_FILE,
-        required=True,
-    ),
-]
 
 
 class AnonymousDocumentUploadAPIView(generics.GenericAPIView):
@@ -132,15 +100,7 @@ class DocumentRequestViewSet(
             "No request body is required."
         ),
         request_body=no_body,
-        responses={
-            200: openapi.Response(
-                description="Notification resent successfully.",
-                examples={
-                    "application/json": {"detail": "Notification resent successfully."}
-                },
-            ),
-            400: "You can resend notification once per hour.",
-        },
+        responses={200: DetailMessageSerializer, 400: DetailMessageSerializer},
     )
     @action(detail=True, methods=["post"], url_path="resend", url_name="resend")
     def resend_notification(self, request, pk=None):
@@ -177,17 +137,7 @@ class DocumentRequestViewSet(
     @swagger_auto_schema(
         operation_summary="Cancel document request",
         request_body=no_body,
-        responses={
-            200: openapi.Response(
-                description="Document request has been canceled.",
-                examples={
-                    "application/json": {
-                        "detail": "Document request has been canceled."
-                    }
-                },
-            ),
-            400: "Request cannot be canceled in its current status.",
-        },
+        responses={200: DetailMessageSerializer, 400: DetailMessageSerializer},
     )
     @action(detail=True, methods=["post"], url_path="cancel", url_name="cancel")
     def cancel_request(self, request, pk=None):
@@ -305,7 +255,7 @@ class DocumentFolderViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class DocumentUploadAPIView(APIView):
+class DocumentUploadAPIView(mixins.CreateModelMixin, generics.GenericAPIView):
     """
     API Endpoint for authenticated users to upload documents.
     Delegates file processing and version control to DocumentService.
@@ -314,26 +264,13 @@ class DocumentUploadAPIView(APIView):
 
     # Enable DRF to parse multi-part form data (required for file uploads)
     parser_classes = [MultiPartParser, FormParser]
+    serializer_class = DocumentUploadSerializer
 
-    @swagger_auto_schema(
-        operation_summary="Upload document",
-        operation_description=(
-            "Upload a document to the authenticated user's document list."
-        ),
-        manual_parameters=document_upload_parameters,
-        responses={
-            201: DocumentUploadSerializer,
-            400: "Validation error.",
-        },
-    )
     def post(self, request, *args, **kwargs):
-        serializer = DocumentUploadSerializer(
-            data=request.data, context={"request": request}
-        )
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        return self.create(request, *args, **kwargs)
 
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    def perform_create(self, serializer):
+        serializer.save()
 
 
 class DocumentViewSet(

@@ -1,12 +1,11 @@
 # app/apps/billing/views/checkout.py
-from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.apps.billing.serializers import CheckoutSerializer
+from app.apps.billing.serializers import CheckoutResponseSerializer, CheckoutSerializer
 from app.apps.billing.services import StripeService
 
 
@@ -28,15 +27,7 @@ class CheckoutView(APIView):
         ),
         request_body=CheckoutSerializer,
         responses={
-            200: openapi.Response(
-                description="Checkout session created successfully.",
-                examples={
-                    "application/json": {
-                        "checkout_url": "https://checkout.stripe.com/...",
-                        "session_id": "cs_test_...",
-                    }
-                },
-            ),
+            200: CheckoutResponseSerializer,
             400: "Invalid or unavailable subscription plan.",
         },
     )

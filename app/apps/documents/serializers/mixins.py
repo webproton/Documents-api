@@ -74,3 +74,12 @@ class DocumentFileValidationMixin:
             )
 
         return value
+
+
+class DetailMessageSerializer(serializers.Serializer):
+    """
+    Generic response shape for endpoints that return only a status
+    message, e.g. {"detail": "..."}.
+    """
+
+    detail = serializers.CharField()

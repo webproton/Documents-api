@@ -30,3 +30,10 @@ class CheckoutSerializer(serializers.Serializer):
             )
 
         return plan
+
+
+class CheckoutResponseSerializer(serializers.Serializer):
+    """Response shape for a created Stripe Checkout session."""
+
+    checkout_url = serializers.URLField()
+    session_id = serializers.CharField()

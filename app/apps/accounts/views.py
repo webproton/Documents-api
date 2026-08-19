@@ -1,4 +1,3 @@
-from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -8,6 +7,8 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from app.apps.common.serializers import MessageSerializer
+
 from .models import EmailConfirmation
 from .serializers import (
     ConfirmEmailSerializer,
@@ -15,7 +16,9 @@ from .serializers import (
     LoginSerializer,
     LogoutSerializer,
     ProfileSerializer,
+    RegisterResponseSerializer,
     RegisterSerializer,
+    TokenResponseSerializer,
     UpdateProfileSerializer,
 )
 
@@ -47,35 +50,6 @@ class ProfileAPIView(generics.RetrieveUpdateAPIView):
 
         return self.request.user
 
-    @swagger_auto_schema(
-        operation_summary="Retrieve user profile",
-        responses={200: ProfileSerializer},
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Update user profile",
-        request_body=UpdateProfileSerializer,
-        responses={
-            200: ProfileSerializer,
-            400: "Validation error.",
-        },
-    )
-    def put(self, request, *args, **kwargs):
-        return super().put(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_summary="Partially update user profile",
-        request_body=UpdateProfileSerializer,
-        responses={
-            200: ProfileSerializer,
-            400: "Validation error.",
-        },
-    )
-    def patch(self, request, *args, **kwargs):
-        return super().patch(request, *args, **kwargs)
-
 
 class MeAPIView(APIView):
     """Return the current user's ID."""
@@ -97,13 +71,7 @@ class LogoutAPIView(APIView):
         operation_summary="Logout",
         operation_description="Blacklist the provided refresh token.",
         request_body=LogoutSerializer,
-        responses={
-            200: openapi.Response(
-                description="Logged out successfully.",
-                examples={"application/json": {"message": "Logged out successfully"}},
-            ),
-            400: "Invalid refresh token.",
-        },
+        responses={200: MessageSerializer, 400: "Invalid refresh token."},
     )
     def post(self, request):
         """Invalidate the user's refresh token."""
@@ -133,19 +101,7 @@ class LoginAPIView(TokenObtainPairView):
 
     @swagger_auto_schema(
         operation_summary="Login",
-        responses={
-            200: openapi.Response(
-                description="JWT tokens returned successfully.",
-                examples={
-                    "application/json": {
-                        "refresh": "string",
-                        "access": "string",
-                        "email": "user@example.com",
-                        "id": 1,
-                    }
-                },
-            ),
-        },
+        responses={200: TokenResponseSerializer},
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
@@ -186,18 +142,7 @@ class RegisterAPIView(APIView):
             "Create a new inactive user and send an email confirmation."
         ),
         request_body=RegisterSerializer,
-        responses={
-            201: openapi.Response(
-                description="User created. Email confirmation required.",
-                examples={
-                    "application/json": {
-                        "message": "User created. Please confirm email.",
-                        "status": "confirmation_required",
-                    }
-                },
-            ),
-            400: "Validation error.",
-        },
+        responses={201: RegisterResponseSerializer, 400: "Validation error."},
     )
     def post(self, request):
         """Validate registration data and create a new user."""
@@ -253,13 +198,7 @@ class ConfirmEmailAPIView(APIView):
             "Validate the email confirmation token and activate the user account."
         ),
         request_body=ConfirmEmailSerializer,
-        responses={
-            200: openapi.Response(
-                description="Email confirmed successfully.",
-                examples={"application/json": {"message": "Email confirmed."}},
-            ),
-            400: "Invalid or expired token.",
-        },
+        responses={200: MessageSerializer, 400: "Invalid or expired token."},
     )
     def post(self, request):
         """Validate the confirmation token and activate the user."""
@@ -295,17 +234,7 @@ class GoogleAuthAPIView(APIView):
         ),
         request_body=GoogleAuthSerializer,
         responses={
-            200: openapi.Response(
-                description="JWT tokens returned successfully.",
-                examples={
-                    "application/json": {
-                        "refresh": "string",
-                        "access": "string",
-                        "id": 1,
-                        "email": "user@example.com",
-                    }
-                },
-            ),
+            200: TokenResponseSerializer,
             400: "Invalid Google ID token or unverified email.",
         },
     )

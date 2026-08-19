@@ -350,3 +350,19 @@ class GoogleAuthSerializer(serializers.Serializer):
         )
 
         return user
+
+
+class TokenResponseSerializer(serializers.Serializer):
+    """Response shape for successful JWT auth (login, Google auth)."""
+
+    refresh = serializers.CharField()
+    access = serializers.CharField()
+    email = serializers.EmailField()
+    id = serializers.IntegerField()
+
+
+class RegisterResponseSerializer(serializers.Serializer):
+    """Response shape for successful registration."""
+
+    message = serializers.CharField()
+    status = serializers.CharField()
