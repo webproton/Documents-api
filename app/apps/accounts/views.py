@@ -245,6 +245,8 @@ class GoogleAuthAPIView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.save()
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
 
         refresh = RefreshToken.for_user(user)
 

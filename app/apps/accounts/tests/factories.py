@@ -27,7 +27,10 @@ class UserFactory(factory.django.DjangoModelFactory):
         with_avatar = factory.Trait(
             avatar=factory.django.ImageField(
                 filename="avatar.jpg",
-            )
+            ),
+            blocked=factory.Trait(
+                is_blocked=True,
+            ),
         )
 
 
@@ -51,5 +54,5 @@ class SocialAccountFactory(factory.django.DjangoModelFactory):
         model = SocialAccount
 
     user = factory.SubFactory(UserFactory)
-    provider = SocialAccount.PROVIDER_GOOGLE
+    provider = SocialAccount.PROVIDER.GOOGLE
     provider_user_id = factory.Sequence(lambda n: f"google-user-{n}")

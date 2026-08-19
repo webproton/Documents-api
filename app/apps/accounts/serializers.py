@@ -42,6 +42,9 @@ class LoginSerializer(TokenObtainPairSerializer):
                 "No active account found with the given credentials"
             )
 
+        if user is not None and user.is_blocked:
+            raise AuthenticationFailed("This account has been blocked.")
+
         data = super().validate(attrs)
 
         data["email"] = self.user.email
@@ -291,22 +294,17 @@ class GoogleAuthSerializer(serializers.Serializer):
         attrs["google_data"] = google_data
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
-        """Find, create, or link a user using Google account data."""
-
         google_data = validated_data["google_data"]
-
         google_id = google_data["sub"]
         email = google_data["email"].lower()
-
         first_name = google_data.get("given_name", "")
         last_name = google_data.get("family_name", "")
 
         social_account = (
-            SocialAccount.objects.filter(
-                provider=SocialAccount.PROVIDER_GOOGLE,
-                provider_user_id=google_id,
-            )
+            SocialAccount.objects.select_for_update()
+            .filter(provider=SocialAccount.PROVIDER.GOOGLE, provider_user_id=google_id)
             .select_related("user")
             .first()
         )
@@ -314,40 +312,50 @@ class GoogleAuthSerializer(serializers.Serializer):
         if social_account:
             return social_account.user
 
-        user = User.objects.filter(email__iexact=email).first()
+        try:
+            user = User.objects.filter(email__iexact=email).first()
 
-        if user is None:
-            user = User.objects.create_user(
-                email=email,
-                password=None,
-                first_name=first_name,
-                last_name=last_name,
-                is_active=True,
-                registration_method=User.REGISTRATION_GOOGLE,
+            if user is None:
+                user = User.objects.create_user(
+                    email=email,
+                    password=None,
+                    first_name=first_name,
+                    last_name=last_name,
+                    is_active=True,
+                    registration_method=User.REGISTRATION_METHOD.GOOGLE,
+                )
+            else:
+                if user.is_blocked:
+                    raise serializers.ValidationError(
+                        {"id_token": "This account has been blocked."}
+                    )
+
+                update_fields = []
+                if not user.is_active:
+                    user.is_active = True
+                    update_fields.append("is_active")
+                if not user.first_name and first_name:
+                    user.first_name = first_name
+                    update_fields.append("first_name")
+                if not user.last_name and last_name:
+                    user.last_name = last_name
+                    update_fields.append("last_name")
+                if update_fields:
+                    user.save(update_fields=update_fields)
+
+            SocialAccount.objects.create(
+                user=user,
+                provider=SocialAccount.PROVIDER.GOOGLE,
+                provider_user_id=google_id,
             )
-        else:
-            update_fields = []
-
-            if not user.is_active:
-                user.is_active = True
-                update_fields.append("is_active")
-
-            if not user.first_name and first_name:
-                user.first_name = first_name
-                update_fields.append("first_name")
-
-            if not user.last_name and last_name:
-                user.last_name = last_name
-                update_fields.append("last_name")
-
-            if update_fields:
-                user.save(update_fields=update_fields)
-
-        SocialAccount.objects.create(
-            user=user,
-            provider=SocialAccount.PROVIDER_GOOGLE,
-            provider_user_id=google_id,
-        )
+        except IntegrityError:
+            # Lost the race to a concurrent request — the SocialAccount
+            # (or User with this email) now exists, fetch and return it.
+            social_account = SocialAccount.objects.select_related("user").get(
+                provider=SocialAccount.PROVIDER.GOOGLE,
+                provider_user_id=google_id,
+            )
+            return social_account.user
 
         return user
 
