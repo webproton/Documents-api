@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -199,6 +200,8 @@ class GoogleAuthAPIView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.save()
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
 
         refresh = RefreshToken.for_user(user)
 
