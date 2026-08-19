@@ -3,6 +3,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     ConfirmEmailAPIView,
+    GoogleAuthAPIView,
     LoginAPIView,
     LogoutAPIView,
     MeAPIView,
@@ -20,4 +21,9 @@ urlpatterns = [
     path("auth/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("auth/me/", MeAPIView.as_view(), name="me"),
     path("profile/", ProfileAPIView.as_view(), name="profile"),
+    path(
+        "auth/social/google/",
+        GoogleAuthAPIView.as_view(),
+        name="google-auth",
+    ),
 ]

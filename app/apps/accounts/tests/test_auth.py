@@ -1,3 +1,4 @@
+# app/apps/accounts/tests/test_auth.py
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -402,3 +403,21 @@ def test_login_not_found_has_no_side_effects(api_client):
 
     # just ensure no user was created accidentally
     assert User.objects.filter(email="missing@test.com").exists() is False
+
+
+@pytest.mark.django_db
+def test_login_blocked_user(api_client, user):
+    user.set_password("StrongPass123")
+    user.is_active = True
+    user.is_blocked = True
+    user.save()
+
+    url = reverse("apps.accounts:login")
+    response = api_client.post(
+        url,
+        {"email": user.email, "password": "StrongPass123"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.data["errors"]["detail"] == "This account has been blocked."

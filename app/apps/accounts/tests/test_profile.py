@@ -1,3 +1,4 @@
+# app/apps/accounts/tests/test_profile.py
 from io import BytesIO
 
 import pytest

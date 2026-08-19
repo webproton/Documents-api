@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -9,6 +10,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from .models import EmailConfirmation
 from .serializers import (
     ConfirmEmailSerializer,
+    GoogleAuthSerializer,
     LoginSerializer,
     LogoutSerializer,
     ProfileSerializer,
@@ -184,3 +186,31 @@ class ConfirmEmailAPIView(APIView):
 
         # 4. Success response
         return Response({"message": "Email confirmed."}, status=status.HTTP_200_OK)
+
+
+class GoogleAuthAPIView(APIView):
+    """Authenticate or register a user with Google."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        """Validate Google credentials and return JWT tokens."""
+
+        serializer = GoogleAuthSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.save()
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
+
+        refresh = RefreshToken.for_user(user)
+
+        return Response(
+            {
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "id": user.id,
+                "email": user.email,
+            },
+            status=status.HTTP_200_OK,
+        )

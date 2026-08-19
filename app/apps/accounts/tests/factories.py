@@ -1,10 +1,11 @@
+# app/apps/accounts/tests/factories.py
 from datetime import timedelta
 
 import factory
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from app.apps.accounts.models import EmailConfirmation
+from app.apps.accounts.models import EmailConfirmation, SocialAccount
 
 User = get_user_model()
 
@@ -26,7 +27,10 @@ class UserFactory(factory.django.DjangoModelFactory):
         with_avatar = factory.Trait(
             avatar=factory.django.ImageField(
                 filename="avatar.jpg",
-            )
+            ),
+            blocked=factory.Trait(
+                is_blocked=True,
+            ),
         )
 
 
@@ -41,3 +45,14 @@ class EmailConfirmationFactory(factory.django.DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     expires_at = factory.LazyFunction(lambda: timezone.now() + timedelta(days=1))
     is_confirmed = False
+
+
+class SocialAccountFactory(factory.django.DjangoModelFactory):
+    """Factory for creating social accounts."""
+
+    class Meta:
+        model = SocialAccount
+
+    user = factory.SubFactory(UserFactory)
+    provider = SocialAccount.PROVIDER.GOOGLE
+    provider_user_id = factory.Sequence(lambda n: f"google-user-{n}")

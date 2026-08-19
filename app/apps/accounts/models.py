@@ -6,6 +6,7 @@ from datetime import timedelta
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from django.utils import timezone
+from model_utils import Choices
 
 
 def avatar_upload_path(instance, filename):
@@ -35,6 +36,19 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractUser):
+
+    REGISTRATION_METHOD = Choices(
+        ("EMAIL", "Email"),
+        ("GOOGLE", "Google"),
+    )
+    is_blocked = models.BooleanField(default=False)
+
+    registration_method = models.CharField(
+        max_length=20,
+        choices=REGISTRATION_METHOD,
+        default=REGISTRATION_METHOD.EMAIL,
+    )
+
     username = None
     email = models.EmailField(unique=True)
 
@@ -44,6 +58,38 @@ class User(AbstractUser):
     REQUIRED_FIELDS = []
 
     objects = UserManager()
+
+
+class SocialAccount(models.Model):
+    """Store a social account linked to a user."""
+
+    PROVIDER = Choices(
+        ("GOOGLE", "Google"),
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="social_accounts",
+    )
+    provider = models.CharField(
+        max_length=20,
+        choices=PROVIDER,
+    )
+    provider_user_id = models.CharField(max_length=255)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "provider_user_id"],
+                name="unique_social_account",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.provider}: {self.user.email}"
 
 
 class EmailConfirmation(models.Model):
