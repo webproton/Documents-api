@@ -6,6 +6,7 @@ from datetime import timedelta
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from django.utils import timezone
+from model_utils import Choices
 
 
 def avatar_upload_path(instance, filename):
@@ -36,18 +37,16 @@ class UserManager(BaseUserManager):
 
 class User(AbstractUser):
 
-    REGISTRATION_EMAIL = "email"
-    REGISTRATION_GOOGLE = "google"
-
-    REGISTRATION_METHOD_CHOICES = [
-        (REGISTRATION_EMAIL, "Email"),
-        (REGISTRATION_GOOGLE, "Google"),
-    ]
+    REGISTRATION_METHOD = Choices(
+        ("EMAIL", "Email"),
+        ("GOOGLE", "Google"),
+    )
+    is_blocked = models.BooleanField(default=False)
 
     registration_method = models.CharField(
         max_length=20,
-        choices=REGISTRATION_METHOD_CHOICES,
-        default=REGISTRATION_EMAIL,
+        choices=REGISTRATION_METHOD,
+        default=REGISTRATION_METHOD.EMAIL,
     )
 
     username = None
@@ -64,11 +63,9 @@ class User(AbstractUser):
 class SocialAccount(models.Model):
     """Store a social account linked to a user."""
 
-    PROVIDER_GOOGLE = "google"
-
-    PROVIDER_CHOICES = [
-        (PROVIDER_GOOGLE, "Google"),
-    ]
+    PROVIDER = Choices(
+        ("GOOGLE", "Google"),
+    )
 
     user = models.ForeignKey(
         User,
@@ -77,7 +74,7 @@ class SocialAccount(models.Model):
     )
     provider = models.CharField(
         max_length=20,
-        choices=PROVIDER_CHOICES,
+        choices=PROVIDER,
     )
     provider_user_id = models.CharField(max_length=255)
 

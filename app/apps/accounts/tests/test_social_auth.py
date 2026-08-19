@@ -36,11 +36,11 @@ def test_google_auth_creates_user(mock_verify, api_client, settings):
     assert user.is_active is True
     assert user.first_name == "Google"
     assert user.last_name == "User"
-    assert user.registration_method == User.REGISTRATION_GOOGLE
+    assert user.registration_method == User.REGISTRATION_METHOD.GOOGLE
 
     social_account = SocialAccount.objects.get(user=user)
 
-    assert social_account.provider == SocialAccount.PROVIDER_GOOGLE
+    assert social_account.provider == SocialAccount.PROVIDER.GOOGLE
     assert social_account.provider_user_id == "google-123"
 
 
@@ -84,7 +84,7 @@ def test_google_auth_links_existing_user(
 
     assert SocialAccount.objects.filter(
         user=user,
-        provider=SocialAccount.PROVIDER_GOOGLE,
+        provider=SocialAccount.PROVIDER.GOOGLE,
         provider_user_id="google-123",
     ).exists()
 
@@ -143,7 +143,7 @@ def test_google_auth_existing_social_account(
 
     SocialAccount.objects.create(
         user=user,
-        provider=SocialAccount.PROVIDER_GOOGLE,
+        provider=SocialAccount.PROVIDER.GOOGLE,
         provider_user_id="google-123",
     )
 
@@ -159,7 +159,7 @@ def test_google_auth_existing_social_account(
 
     assert (
         SocialAccount.objects.filter(
-            provider=SocialAccount.PROVIDER_GOOGLE,
+            provider=SocialAccount.PROVIDER.GOOGLE,
             provider_user_id="google-123",
         ).count()
         == 1
@@ -237,3 +237,31 @@ def test_google_auth_existing_inactive_user_becomes_active(
     user.refresh_from_db()
 
     assert user.is_active is True
+
+
+@pytest.mark.django_db
+@patch("app.apps.accounts.serializers.id_token.verify_oauth2_token")
+def test_google_auth_rejects_blocked_user(
+    mock_verify,
+    api_client,
+    user,
+    settings,
+):
+    mock_verify.return_value = {
+        **GOOGLE_DATA,
+        "email": user.email,
+    }
+    settings.GOOGLE_CLIENT_ID = "test-client-id"
+
+    user.is_active = True
+    user.is_blocked = True
+    user.save()
+
+    response = api_client.post(
+        reverse("apps.accounts:google-auth"),
+        {"id_token": "valid-google-token"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "id_token" in response.data["errors"]
