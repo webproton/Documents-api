@@ -284,3 +284,14 @@ STRIPE_CANCEL_URL = env(
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
 
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID")
+
+SWAGGER_SETTINGS = {
+    "SECURITY_DEFINITIONS": {
+        "Bearer": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header",
+            "description": "JWT Authorization header. Example: Bearer <token>",
+        },
+    },
+}

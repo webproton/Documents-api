@@ -2,6 +2,8 @@
 
 import stripe
 from django.conf import settings
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -18,6 +20,26 @@ class StripeWebhookView(APIView):
     permission_classes = (AllowAny,)
     authentication_classes = ()
 
+    @swagger_auto_schema(
+        operation_summary="Stripe webhook",
+        operation_description=(
+            "Receive and verify Stripe webhook events. "
+            "Authentication is performed using the Stripe-Signature header."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                "Stripe-Signature",
+                openapi.IN_HEADER,
+                description="Stripe webhook signature.",
+                type=openapi.TYPE_STRING,
+                required=True,
+            ),
+        ],
+        responses={
+            200: "Webhook processed successfully.",
+            400: "Missing or invalid Stripe signature or payload.",
+        },
+    )
     def post(self, request, *args, **kwargs):
         payload = request.body
         signature = request.headers.get("Stripe-Signature")

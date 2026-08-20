@@ -1,4 +1,5 @@
 # app/apps/billing/views/subscription.py
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,6 +16,13 @@ class CurrentSubscriptionView(APIView):
 
     permission_classes = (IsAuthenticated,)
 
+    @swagger_auto_schema(
+        operation_summary="Get current subscription",
+        operation_description=(
+            "Retrieve the authenticated user's" "current active subscription."
+        ),
+        responses={200: SubscriptionSerializer, 404: "No active subscription found."},
+    )
     def get(self, request, *args, **kwargs):
         subscription = (
             Subscription.objects.select_related("plan")

@@ -1,4 +1,5 @@
 from django.utils import timezone
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -7,6 +8,8 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from app.apps.common.serializers import MessageSerializer
+
 from .models import EmailConfirmation
 from .serializers import (
     ConfirmEmailSerializer,
@@ -14,7 +17,9 @@ from .serializers import (
     LoginSerializer,
     LogoutSerializer,
     ProfileSerializer,
+    RegisterResponseSerializer,
     RegisterSerializer,
+    TokenResponseSerializer,
     UpdateProfileSerializer,
 )
 
@@ -63,6 +68,12 @@ class LogoutAPIView(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
 
+    @swagger_auto_schema(
+        operation_summary="Logout",
+        operation_description="Blacklist the provided refresh token.",
+        request_body=LogoutSerializer,
+        responses={200: MessageSerializer, 400: "Invalid refresh token."},
+    )
     def post(self, request):
         """Invalidate the user's refresh token."""
 
@@ -88,6 +99,13 @@ class LoginAPIView(TokenObtainPairView):
     """Authenticate a user and return JWT tokens."""
 
     serializer_class = LoginSerializer
+
+    @swagger_auto_schema(
+        operation_summary="Login",
+        responses={200: TokenResponseSerializer},
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
 
 class RegisterAPIView(APIView):
@@ -119,6 +137,14 @@ class RegisterAPIView(APIView):
 
     permission_classes = [permissions.AllowAny]
 
+    @swagger_auto_schema(
+        operation_summary="Register a new user",
+        operation_description=(
+            "Create a new inactive user and send an email confirmation."
+        ),
+        request_body=RegisterSerializer,
+        responses={201: RegisterResponseSerializer, 400: "Validation error."},
+    )
     def post(self, request):
         """Validate registration data and create a new user."""
 
@@ -167,6 +193,14 @@ class ConfirmEmailAPIView(APIView):
 
     permission_classes = [permissions.AllowAny]
 
+    @swagger_auto_schema(
+        operation_summary="Confirm email",
+        operation_description=(
+            "Validate the email confirmation token and activate the user account."
+        ),
+        request_body=ConfirmEmailSerializer,
+        responses={200: MessageSerializer, 400: "Invalid or expired token."},
+    )
     def post(self, request):
         """Validate the confirmation token and activate the user."""
 
@@ -193,6 +227,18 @@ class GoogleAuthAPIView(APIView):
 
     permission_classes = [permissions.AllowAny]
 
+    @swagger_auto_schema(
+        operation_summary="Authenticate with Google",
+        operation_description=(
+            "Validate a Google ID token, create or link the user, "
+            "and return JWT access and refresh tokens."
+        ),
+        request_body=GoogleAuthSerializer,
+        responses={
+            200: TokenResponseSerializer,
+            400: "Invalid Google ID token or unverified email.",
+        },
+    )
     def post(self, request):
         """Validate Google credentials and return JWT tokens."""
 
