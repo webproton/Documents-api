@@ -1,8 +1,133 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.contrib.admin import helpers
+from django.shortcuts import render
 
+from app.apps.billing.services.stripe import StripeService, StripeServiceError
+
+from .forms import ChangePlanActionForm
 from .models import EmailConfirmation, SocialAccount, User
 
 
+@admin.action(description="Block selected users")
+def block_users(modeladmin, request, queryset):
+    """Block selected users, preventing them from logging in."""
+
+    updated = queryset.update(is_blocked=True)
+    modeladmin.message_user(request, f"{updated} user(s) blocked.", messages.SUCCESS)
+
+
+@admin.action(description="Unblock selected users")
+def unblock_users(modeladmin, request, queryset):
+    """Unblock selected users, restoring their ability to log in."""
+
+    updated = queryset.update(is_blocked=False)
+    modeladmin.message_user(request, f"{updated} user(s) unblocked.", messages.SUCCESS)
+
+
+@admin.action(description="Cancel subscription for selected users")
+def cancel_subscription_action(modeladmin, request, queryset):
+    """Cancel the Stripe subscription for selected users, moving them back to FREE."""
+
+    success_count = 0
+    skipped_users = []
+
+    for user in queryset.select_related("subscription"):
+        subscription = getattr(user, "subscription", None)
+
+        if subscription is None or not subscription.stripe_subscription_id:
+            skipped_users.append(f"{user.email} (no active paid subscription)")
+            continue
+
+        StripeService.cancel_subscription(subscription)
+        success_count += 1
+
+    if success_count:
+        modeladmin.message_user(
+            request,
+            f"Subscription cancellation scheduled for {success_count} user(s).",
+            messages.SUCCESS,
+        )
+    if skipped_users:
+        modeladmin.message_user(
+            request,
+            f"Skipped: {', '.join(skipped_users)}",
+            messages.WARNING,
+        )
+
+
+@admin.action(description="Change plan for selected users")
+def change_plan_action(modeladmin, request, queryset):
+    """
+    Change the subscription plan for selected users.
+
+    Users with an active Stripe subscription are updated via
+    StripeService.change_plan(), which keeps Stripe in sync. Users
+    without a Stripe subscription (e.g. still on FREE) are updated
+    locally, since there is nothing to synchronize with Stripe.
+    """
+
+    if "apply" in request.POST:
+        form = ChangePlanActionForm(request.POST)
+        if form.is_valid():
+            new_plan = form.cleaned_data["plan"]
+            success_count = 0
+            failed_users = []
+
+            for user in queryset.select_related("subscription"):
+                subscription = getattr(user, "subscription", None)
+
+                if subscription is None:
+                    failed_users.append(f"{user.email} (no subscription)")
+                    continue
+
+                if subscription.plan_id == new_plan.id:
+                    success_count += 1
+                    continue
+
+                if not subscription.stripe_subscription_id:
+                    subscription.plan = new_plan
+                    subscription.save(update_fields=["plan"])
+                    success_count += 1
+                    continue
+
+                try:
+                    StripeService.change_plan(subscription, new_plan)
+                    success_count += 1
+                except StripeServiceError as exc:
+                    failed_users.append(f"{user.email} ({exc})")
+
+            if success_count:
+                modeladmin.message_user(
+                    request,
+                    f"Plan updated for {success_count} user(s).",
+                    messages.SUCCESS,
+                )
+            if failed_users:
+                modeladmin.message_user(
+                    request,
+                    f"Failed for: {', '.join(failed_users)}",
+                    messages.WARNING,
+                )
+            return None
+    else:
+        form = ChangePlanActionForm(
+            initial={
+                "_selected_action": queryset.values_list("pk", flat=True),
+            }
+        )
+
+    return render(
+        request,
+        "admin/accounts/change_plan_action.html",
+        context={
+            "users": queryset,
+            "form": form,
+            "action_checkbox_name": helpers.ACTION_CHECKBOX_NAME,
+        },
+    )
+
+
+@admin.register(User)
 class UserAdmin(admin.ModelAdmin):
     """add user field  to admin dashboard"""
 
@@ -14,12 +139,27 @@ class UserAdmin(admin.ModelAdmin):
         "is_active",
         "is_blocked",
         "registration_method",
+        "current_plan",
     )
     list_filter = ("is_active", "is_blocked", "registration_method")
     search_fields = ("email", "first_name", "last_name")
+    actions = [
+        block_users,
+        unblock_users,
+        change_plan_action,
+        cancel_subscription_action,
+    ]
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("subscription__plan")
 
-admin.site.register(User, UserAdmin)
+    def current_plan(self, obj):
+        subscription = getattr(obj, "subscription", None)
+        if subscription is None or subscription.plan is None:
+            return "—"
+        return subscription.plan.get_name_display()
+
+    current_plan.short_description = "Plan"
 
 
 @admin.register(EmailConfirmation)
