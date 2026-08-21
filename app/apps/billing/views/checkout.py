@@ -1,10 +1,10 @@
 # app/apps/billing/views/checkout.py
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from app.apps.accounts.permissions import IsActiveAndNotBlocked
 from app.apps.billing.serializers import CheckoutResponseSerializer, CheckoutSerializer
 from app.apps.billing.services import StripeService
 
@@ -17,7 +17,7 @@ class CheckoutView(APIView):
     creating a checkout session.
     """
 
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsActiveAndNotBlocked,)
 
     @swagger_auto_schema(
         operation_summary="Create Stripe Checkout session",

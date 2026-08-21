@@ -6,11 +6,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from app.apps.common.serializers import MessageSerializer
 
 from .models import EmailConfirmation
+from .permissions import IsActiveAndNotBlocked
 from .serializers import (
     ConfirmEmailSerializer,
     GoogleAuthSerializer,
@@ -19,9 +20,16 @@ from .serializers import (
     ProfileSerializer,
     RegisterResponseSerializer,
     RegisterSerializer,
+    SafeTokenRefreshSerializer,
     TokenResponseSerializer,
     UpdateProfileSerializer,
 )
+
+
+class SafeTokenRefreshView(TokenRefreshView):
+    """Refresh endpoint that also rejects blocked/inactive users."""
+
+    serializer_class = SafeTokenRefreshSerializer
 
 
 class ProfileAPIView(generics.RetrieveUpdateAPIView):
@@ -35,7 +43,7 @@ class ProfileAPIView(generics.RetrieveUpdateAPIView):
     Works only with request.user (no access to other users).
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsActiveAndNotBlocked]
 
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -55,7 +63,7 @@ class ProfileAPIView(generics.RetrieveUpdateAPIView):
 class MeAPIView(APIView):
     """Return the current user's ID."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsActiveAndNotBlocked]
 
     def get(self, request):
         """Return the authenticated user's ID."""
@@ -66,7 +74,7 @@ class MeAPIView(APIView):
 class LogoutAPIView(APIView):
     """Blacklist the provided refresh token."""
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsActiveAndNotBlocked]
 
     @swagger_auto_schema(
         operation_summary="Logout",

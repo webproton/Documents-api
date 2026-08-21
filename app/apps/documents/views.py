@@ -19,6 +19,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from app.apps.accounts.permissions import IsActiveAndNotBlocked
 from app.apps.documents.filters import DocumentFilter
 from app.apps.documents.models import Document, DocumentRequest, DocumentType
 from app.apps.documents.serializers import (
@@ -163,7 +164,7 @@ class DocumentTypeViewSet(viewsets.ReadOnlyModelViewSet):
     Supports search via ?search=...
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsActiveAndNotBlocked]
     queryset = DocumentType.objects.all().order_by("name")
     serializer_class = DocumentTypePublicSerializer
 

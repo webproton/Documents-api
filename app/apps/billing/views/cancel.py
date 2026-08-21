@@ -1,9 +1,9 @@
 # billing/views/cancel.py
 from drf_yasg.utils import no_body, swagger_auto_schema
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from app.apps.accounts.permissions import IsActiveAndNotBlocked
 from app.apps.billing.serializers import CancelSubscriptionSerializer
 from app.apps.common.serializers import MessageSerializer
 
@@ -14,7 +14,7 @@ class CancelSubscriptionView(APIView):
     current billing period.
     """
 
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsActiveAndNotBlocked,)
 
     @swagger_auto_schema(
         operation_summary="Cancel subscription",

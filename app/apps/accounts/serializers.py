@@ -6,11 +6,40 @@ from google.auth.transport import requests
 from google.oauth2 import id_token
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.serializers import (
+    TokenObtainPairSerializer,
+    TokenRefreshSerializer,
+)
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from app.apps.notifications.tasks import send_notification_email_task
 
 from .models import EmailConfirmation, SocialAccount, User
+
+
+class SafeTokenRefreshSerializer(TokenRefreshSerializer):
+    """
+    Extends the standard refresh serializer to also reject blocked or
+    inactive users. The default refresh flow only validates the
+    token's signature and expiry, not the user's current state — so
+    a blocked user could otherwise keep refreshing indefinitely with
+    an old refresh token.
+    """
+
+    def validate(self, attrs):
+
+        refresh_token = RefreshToken(attrs["refresh"])
+        user_id = refresh_token.get("user_id")
+
+        user = User.objects.filter(id=user_id).first()
+
+        if not user or not user.is_active:
+            raise AuthenticationFailed("User account is inactive.")
+
+        if user.is_blocked:
+            raise AuthenticationFailed("This account has been blocked.")
+
+        return super().validate(attrs)
 
 
 class LogoutSerializer(serializers.Serializer):
@@ -310,7 +339,19 @@ class GoogleAuthSerializer(serializers.Serializer):
         )
 
         if social_account:
-            return social_account.user
+            user = social_account.user
+
+            if user.is_blocked:
+                raise serializers.ValidationError(
+                    {"id_token": "This account has been blocked."}
+                )
+
+            if not user.is_active:
+                raise serializers.ValidationError(
+                    {"id_token": "This account is inactive."}
+                )
+
+            return user
 
         try:
             user = User.objects.filter(email__iexact=email).first()
@@ -331,15 +372,19 @@ class GoogleAuthSerializer(serializers.Serializer):
                     )
 
                 update_fields = []
+
                 if not user.is_active:
                     user.is_active = True
                     update_fields.append("is_active")
+
                 if not user.first_name and first_name:
                     user.first_name = first_name
                     update_fields.append("first_name")
+
                 if not user.last_name and last_name:
                     user.last_name = last_name
                     update_fields.append("last_name")
+
                 if update_fields:
                     user.save(update_fields=update_fields)
 
@@ -355,7 +400,19 @@ class GoogleAuthSerializer(serializers.Serializer):
                 provider=SocialAccount.PROVIDER.GOOGLE,
                 provider_user_id=google_id,
             )
-            return social_account.user
+            user = social_account.user
+
+            if user.is_blocked:
+                raise serializers.ValidationError(
+                    {"id_token": "This account has been blocked."}
+                )
+
+            if not user.is_active:
+                raise serializers.ValidationError(
+                    {"id_token": "This account is inactive."}
+                )
+
+            return user
 
         return user
 
