@@ -32,12 +32,14 @@ def cancel_subscription_action(modeladmin, request, queryset):
     skipped_users = []
 
     for user in queryset.select_related("subscription"):
+        # Skip users without an active paid Stripe subscription.
         subscription = getattr(user, "subscription", None)
 
         if subscription is None or not subscription.stripe_subscription_id:
             skipped_users.append(f"{user.email} (no active paid subscription)")
             continue
-
+        # Cancel the subscription in Stripe and schedule cancellation
+        # at the end of the current billing period.
         StripeService.cancel_subscription(subscription)
         success_count += 1
 
@@ -48,6 +50,8 @@ def cancel_subscription_action(modeladmin, request, queryset):
             messages.SUCCESS,
         )
     if skipped_users:
+        # Report users that could not be processed instead of failing
+        # the whole bulk action.
         modeladmin.message_user(
             request,
             f"Skipped: {', '.join(skipped_users)}",
@@ -65,7 +69,8 @@ def change_plan_action(modeladmin, request, queryset):
     without a Stripe subscription (e.g. still on FREE) are updated
     locally, since there is nothing to synchronize with Stripe.
     """
-
+    # The first request displays the plan selection form.
+    # The second request contains the selected plan and applies the action.
     if "apply" in request.POST:
         form = ChangePlanActionForm(request.POST)
         if form.is_valid():
@@ -76,21 +81,27 @@ def change_plan_action(modeladmin, request, queryset):
             for user in queryset.select_related("subscription"):
                 subscription = getattr(user, "subscription", None)
 
+                # A user must have a subscription record to change its plan.
                 if subscription is None:
                     failed_users.append(f"{user.email} (no subscription)")
                     continue
 
+                # Nothing to change if the user is already on the selected plan
                 if subscription.plan_id == new_plan.id:
                     success_count += 1
                     continue
 
                 if not subscription.stripe_subscription_id:
+                    # No Stripe subscription exists, so only the local plan
+                    # needs to be changed.
                     subscription.plan = new_plan
                     subscription.save(update_fields=["plan"])
                     success_count += 1
                     continue
 
                 try:
+                    # Keep the local subscription and Stripe subscription
+                    # synchronized for users with an active Stripe subscription.
                     StripeService.change_plan(subscription, new_plan)
                     success_count += 1
                 except StripeServiceError as exc:
@@ -110,6 +121,8 @@ def change_plan_action(modeladmin, request, queryset):
                 )
             return None
     else:
+        # Preserve the selected users when opening the intermediate
+        # plan selection form in Django Admin.
         form = ChangePlanActionForm(
             initial={
                 "_selected_action": queryset.values_list("pk", flat=True),
