@@ -1,10 +1,9 @@
 # app/apps/billing/views/subscription.py
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import status
+from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.apps.accounts.permissions import IsActiveAndNotBlocked
 from app.apps.billing.models import Subscription
 from app.apps.billing.serializers import SubscriptionSerializer
 
@@ -14,7 +13,7 @@ class CurrentSubscriptionView(APIView):
     Retrieve the authenticated user's current subscription.
     """
 
-    permission_classes = (IsActiveAndNotBlocked,)
+    permission_classes = [permissions.IsAuthenticated]
 
     @swagger_auto_schema(
         operation_summary="Get current subscription",

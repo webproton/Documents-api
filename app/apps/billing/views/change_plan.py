@@ -1,9 +1,9 @@
 # billing/views/change_plan.py
 from drf_yasg.utils import swagger_auto_schema
+from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from app.apps.accounts.permissions import IsActiveAndNotBlocked
 from app.apps.billing.serializers import ChangePlanSerializer, SubscriptionSerializer
 
 
@@ -13,7 +13,7 @@ class ChangePlanView(APIView):
     the current subscription plan.
     """
 
-    permission_classes = (IsActiveAndNotBlocked,)
+    permission_classes = [permissions.IsAuthenticated]
 
     @swagger_auto_schema(
         operation_summary="Change subscription plan",
