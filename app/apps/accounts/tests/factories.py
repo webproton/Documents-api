@@ -25,12 +25,10 @@ class UserFactory(factory.django.DjangoModelFactory):
 
     class Params:
         with_avatar = factory.Trait(
-            avatar=factory.django.ImageField(
-                filename="avatar.jpg",
-            ),
-            blocked=factory.Trait(
-                is_blocked=True,
-            ),
+            avatar=factory.django.ImageField(filename="avatar.jpg"),
+        )
+        blocked = factory.Trait(
+            is_blocked=True,
         )
 
 
