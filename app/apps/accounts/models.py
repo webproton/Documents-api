@@ -188,9 +188,10 @@ class EmailConfirmation(models.Model):
             EmailConfirmation or None
         """
 
-        # If user already active → nothing to do
+        # # If user already active → nothing to do
         if self.user.is_active:
             return self
+
         # already used → no-op (idempotent safety)
         if self.is_confirmed:
             return self
@@ -228,6 +229,7 @@ class EmailConfirmation(models.Model):
         # Fetch confirmation by token with expiration check only
         confirmation = cls.objects.filter(
             token=token,
+            is_confirmed=False,
             expires_at__gt=timezone.now(),
         ).first()
 

@@ -21,7 +21,8 @@ class UserFactory(factory.django.DjangoModelFactory):
     email = factory.Sequence(lambda n: f"user{n}@test.com")
     first_name = "Test"
     last_name = "User"
-    is_active = False
+    is_active = True
+    is_blocked = False
 
     class Params:
         with_avatar = factory.Trait(
@@ -40,7 +41,7 @@ class EmailConfirmationFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = EmailConfirmation
 
-    user = factory.SubFactory(UserFactory)
+    user = factory.SubFactory(UserFactory, is_active=False)
     expires_at = factory.LazyFunction(lambda: timezone.now() + timedelta(days=1))
     is_confirmed = False
 

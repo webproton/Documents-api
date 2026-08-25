@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from app.apps.common.serializers import MessageSerializer
 
@@ -19,9 +19,16 @@ from .serializers import (
     ProfileSerializer,
     RegisterResponseSerializer,
     RegisterSerializer,
+    SafeTokenRefreshSerializer,
     TokenResponseSerializer,
     UpdateProfileSerializer,
 )
+
+
+class SafeTokenRefreshView(TokenRefreshView):
+    """Refresh endpoint that also rejects blocked/inactive users."""
+
+    serializer_class = SafeTokenRefreshSerializer
 
 
 class ProfileAPIView(generics.RetrieveUpdateAPIView):
