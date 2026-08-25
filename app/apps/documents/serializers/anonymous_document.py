@@ -51,7 +51,13 @@ class AnonymousDocumentUploadSerializer(
     @transaction.atomic
     def create(self, validated_data):
         # lock the query string for updating
-        doc_request = self.doc_request
+        doc_request = DocumentRequest.objects.select_for_update().get(
+            pk=self.doc_request.pk
+        )
+        if doc_request.status != DocumentRequest.STATUS.PENDING:
+            raise serializers.ValidationError(
+                {"token": f"This request is already {doc_request.status.lower()}."}
+            )
 
         # Standard versioning: update previous
         # documents of the requester to REPLACED

@@ -2,6 +2,7 @@
 from django.db import transaction
 from rest_framework import serializers
 
+from app.apps.billing.models import Subscription
 from app.apps.documents.models import Document, DocumentType
 from app.apps.documents.serializers.mixins import (
     CheckDocumentLimitSerializerMixin,
@@ -43,11 +44,31 @@ class DocumentUploadSerializer(
     def create(self, validated_data):
         user = self.context["request"].user
         document_type = validated_data["document_type"]
-        # Capturing and replacing old versions
-        Document.objects.filter(
+
+        # Lock subscription to prevent concurrent uploads from bypassing the limit.
+        subscription = Subscription.objects.select_for_update().get(user=user)
+        # None means the plan has no document limit.
+        limit = subscription.plan.document_limit if subscription.plan else None
+
+        if limit is not None:
+            # Count all documents, including replaced versions.
+            total_documents = Document.objects.filter(user=user).count()
+
+            if total_documents >= limit:
+                raise serializers.ValidationError(
+                    {
+                        "document_type": [
+                            f"Document limit reached ({limit}). "
+                            "Upgrade your plan to upload more documents."
+                        ]
+                    }
+                )
+        # Lock active versions and replace them before creating the new version.
+        Document.objects.select_for_update().filter(
             user=user, document_type=document_type, status=Document.STATUS.ACTIVE
         ).update(status=Document.STATUS.REPLACED)
 
+        # Use the provided name or fall back to the uploaded filename.
         name = validated_data.get("name") or validated_data["file"].name
 
         return Document.objects.create(
