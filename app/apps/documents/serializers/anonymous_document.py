@@ -1,4 +1,5 @@
 # app/apps/documents/serializers/anonymous_document.py
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
@@ -9,6 +10,8 @@ from app.apps.documents.serializers.mixins import (
     CheckDocumentLimitSerializerMixin,
     DocumentFileValidationMixin,
 )
+
+User = get_user_model()
 
 
 class AnonymousDocumentUploadSerializer(
@@ -41,7 +44,6 @@ class AnonymousDocumentUploadSerializer(
             raise serializers.ValidationError(
                 {"token": f"This request is already {doc_request.status.lower()}."}
             )
-        self.validate_document_upload_limit(doc_request.requester)
 
         # We save the request object in the class
         # context to avoid repeating the request in create()
@@ -50,19 +52,32 @@ class AnonymousDocumentUploadSerializer(
 
     @transaction.atomic
     def create(self, validated_data):
+        doc_request_instance = self.doc_request
+        # Single LOCK ANCHOR: Lock the owner user.
+        # Now ALL operations with this user's documents will follow each other,
+        # which completely eliminates the possibility
+        # of Deadlock between different tables.
+        user = User.objects.select_for_update().get(
+            pk=doc_request_instance.requester_id
+        )
+
         # lock the query string for updating
         doc_request = DocumentRequest.objects.select_for_update().get(
-            pk=self.doc_request.pk
+            pk=doc_request_instance.pk
         )
         if doc_request.status != DocumentRequest.STATUS.PENDING:
             raise serializers.ValidationError(
                 {"token": f"This request is already {doc_request.status.lower()}."}
             )
 
+        # Check the limit inside the atomic block
+        # (protection against limit breakout)
+        self.validate_document_upload_limit(user)
+
         # Standard versioning: update previous
         # documents of the requester to REPLACED
-        Document.objects.select_for_update().filter(
-            user=doc_request.requester,
+        Document.objects.filter(
+            user=user,
             document_type=doc_request.document_type,
             status=Document.STATUS.ACTIVE,
         ).update(status=Document.STATUS.REPLACED)
@@ -72,7 +87,7 @@ class AnonymousDocumentUploadSerializer(
 
         # Create the incoming document linked to the request owner
         new_document = Document.objects.create(
-            user=doc_request.requester,
+            user=user,
             name=name,
             file=validated_data["file"],
             document_type=doc_request.document_type,

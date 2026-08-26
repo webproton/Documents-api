@@ -79,10 +79,12 @@ class Document(TimeStampedModel, StatusModel):
         most recent REPLACED version back to ACTIVE.
         """
         if self.status == self.STATUS.ACTIVE:
+            type(self.user).objects.select_for_update().get(pk=self.user_id)
             # looking for the last replaced document
             # of the same type for the same user.
             last_replaced = (
-                Document.objects.filter(
+                Document.objects.select_for_update()
+                .filter(
                     user=self.user,
                     document_type=self.document_type,
                     status=self.STATUS.REPLACED,
