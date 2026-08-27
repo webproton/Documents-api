@@ -196,7 +196,15 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "email", "first_name", "last_name", "avatar"]
+        fields = [
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "avatar",
+            "is_2fa_enabled",
+            "two_factor_method",
+        ]
 
 
 class UpdateProfileSerializer(serializers.ModelSerializer):

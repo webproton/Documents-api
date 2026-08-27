@@ -295,3 +295,46 @@ SWAGGER_SETTINGS = {
         },
     },
 }
+
+# ====================== 2FA & SECURITY SETTINGS ======================
+
+# 2FA OTP code lifetime in seconds (20 minutes)
+TWO_FACTOR_CODE_LIFETIME = 20 * 60
+
+# Maximum number of invalid attempts before invalidating the 2FA session
+TWO_FACTOR_MAX_ATTEMPTS = 3
+
+# Temporary pre_auth_token lifetime in seconds (20 minutes)
+PRE_AUTH_TOKEN_LIFETIME = 20 * 60
+
+# Trusted device token lifetime in days (90 days)
+TRUSTED_DEVICE_LIFETIME_DAYS = 90
+
+# Cooldown limit for resending 2FA code in seconds (60 seconds)
+TWO_FACTOR_RESEND_COOLDOWN = 60
+
+
+# ====================== TWILIO (SMS) SETTINGS ======================
+TWILIO_ACCOUNT_SID = env("TWILIO_ACCOUNT_SID", default="")
+TWILIO_AUTH_TOKEN = env("TWILIO_AUTH_TOKEN", default="")
+TWILIO_PHONE_NUMBER = env("TWILIO_PHONE_NUMBER", default="")
+
+OTP_HASH_SECRET = env("OTP_HASH_SECRET")
+
+
+# ====================== GEOIP SETTINGS ======================
+# Path to MaxMind GeoLite2 City database file (.mmdb)
+GEOIP_PATH = BASE_DIR / "geoip"
+
+
+# ====================== REST FRAMEWORK THROTTLING ======================
+# Safely append rate limits to existing REST_FRAMEWORK settings dictionary
+REST_FRAMEWORK.setdefault("DEFAULT_THROTTLE_RATES", {}).update(
+    {
+        "2fa_code_send": "3/minute",
+        "2fa_code_verify": "10/minute",
+        "2fa_confirm": "5/min",
+        "2fa_resend": "2/min",
+        "phone_confirm_send": "30/minute",
+    }
+)
