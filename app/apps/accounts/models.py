@@ -405,9 +405,7 @@ class PhoneConfirmation(TimeStampedModel):
 
     is_confirmed = models.BooleanField(default=False)
 
-    CODE_TTL_MINUTES = (
-        20  # то же значение, что и у логин-кода — если нет причины делать иначе
-    )
+    CODE_TTL_MINUTES = 20
 
     @classmethod
     def create_for_phone(
@@ -428,6 +426,7 @@ class PhoneConfirmation(TimeStampedModel):
     def is_expired(self) -> bool:
         return timezone.now() > self.expires_at
 
+    @transaction.atomic
     def confirm(self, raw_code: str) -> bool:
         """Verify raw_code; on success mark confirmed and set user.phone_confirmed."""
         if self.is_confirmed or self.is_expired():
