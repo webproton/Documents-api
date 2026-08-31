@@ -125,17 +125,10 @@ class DocumentRequest(TimeStampedModel, StatusModel):
     def cancel(self):
         """
         Cancels the document request if it is in PENDING status.
-        Uses select_for_update to prevent race conditions
-        during concurrent updates.
         """
-        # Lock and retrieve the database row to prevent concurrent modification
-        locked_request = DocumentRequest.objects.select_for_update().get(pk=self.pk)
 
-        if locked_request.status != self.STATUS.PENDING:
+        if self.status != self.STATUS.PENDING:
             raise ValidationError("Cannot cancel a request that is not pending.")
 
-        locked_request.status = self.STATUS.CANCELED
-        locked_request.save(update_fields=["status"])
-
-        # Sync current in-memory instance status
-        self.status = locked_request.status
+        self.status = self.STATUS.CANCELED
+        self.save(update_fields=["status"])
