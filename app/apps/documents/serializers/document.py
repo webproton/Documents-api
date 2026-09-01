@@ -38,24 +38,19 @@ class DocumentUploadSerializer(
         ]
 
     def validate(self, attrs):
+        user = self.context["request"].user
+        self.validate_document_upload_limit(user)
         return attrs
 
     @transaction.atomic
     def create(self, validated_data):
-        request_user = self.context["request"].user
-
-        user = User.objects.select_for_update().get(pk=request_user.pk)
-
-        self.validate_document_upload_limit(user)
-
+        user = self.context["request"].user
         document_type = validated_data["document_type"]
-
-        # Lock active versions and replace them before creating the new version.
+        # Capturing and replacing old versions
         Document.objects.filter(
             user=user, document_type=document_type, status=Document.STATUS.ACTIVE
         ).update(status=Document.STATUS.REPLACED)
 
-        # Use the provided name or fall back to the uploaded filename.
         name = validated_data.get("name") or validated_data["file"].name
 
         return Document.objects.create(
