@@ -1,4 +1,5 @@
 # apps/documents/serializers/document.py
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
@@ -7,6 +8,8 @@ from app.apps.documents.serializers.mixins import (
     CheckDocumentLimitSerializerMixin,
     DocumentFileValidationMixin,
 )
+
+User = get_user_model()
 
 
 class DocumentUploadSerializer(

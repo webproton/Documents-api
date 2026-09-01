@@ -82,3 +82,5 @@ shema.txt
 .DS_Store
 
 celerybeat-schedule*
+*.mmdb
+app/geoip

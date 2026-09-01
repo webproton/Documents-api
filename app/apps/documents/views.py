@@ -1,9 +1,6 @@
 # apps/documents/views.py
-from datetime import timedelta
-
-from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Prefetch
-from django.utils import timezone
 from drf_yasg import openapi
 from drf_yasg.utils import no_body, swagger_auto_schema
 from rest_framework import (
@@ -32,7 +29,6 @@ from app.apps.documents.serializers import (
     FolderListSerializer,
 )
 from app.apps.documents.serializers.mixins import DetailMessageSerializer
-from app.apps.notifications.tasks import send_notification_email_task
 
 
 class AnonymousDocumentUploadAPIView(generics.GenericAPIView):
@@ -106,29 +102,10 @@ class DocumentRequestViewSet(
     def resend_notification(self, request, pk=None):
         """POST /api/documents/requests/{id}/resend/"""
         doc_request = self.get_object()
-        if (
-            doc_request.last_sent_at
-            and timezone.now() - doc_request.last_sent_at < timedelta(hours=1)
-        ):
-            raise serializers.ValidationError(
-                {"detail": "You can resend notification once per hour."}
-            )
-
-        with transaction.atomic():
-            doc_request.last_sent_at = timezone.now()
-            doc_request.save(update_fields=["last_sent_at"])
-
-            # Sending a new task strictly after a successful transaction commit
-            transaction.on_commit(
-                lambda: send_notification_email_task.delay(
-                    recipient_email=doc_request.recipient_email,
-                    context=doc_request.get_email_context(),  # take a pure context
-                    notification_code="DOCUMENT_REQUEST",
-                    title=f"Document Request: {doc_request.document_type.name}",
-                    user_id=doc_request.requester.id,
-                    document_id=doc_request.id,
-                )
-            )
+        try:
+            doc_request.resend_notification()
+        except DjangoValidationError as e:
+            raise serializers.ValidationError({"detail": e.message})
 
         return Response(
             {"detail": "Notification resent successfully."}, status=status.HTTP_200_OK
@@ -143,14 +120,12 @@ class DocumentRequestViewSet(
     def cancel_request(self, request, pk=None):
         """POST /api/documents/requests/{id}/cancel/"""
         doc_request = self.get_object()
-
-        if doc_request.status != DocumentRequest.STATUS.PENDING:
-            raise serializers.ValidationError(
-                {"detail": f"Cannot cancel a request with status {doc_request.status}."}
-            )
-
-        doc_request.status = DocumentRequest.STATUS.CANCELED
-        doc_request.save(update_fields=["status"])
+        try:
+            doc_request.cancel()
+        except DjangoValidationError as e:
+            # Convert the Django built-in error
+            # to a DRF error for a 400 Bad Request response
+            raise serializers.ValidationError({"detail": e.message})
 
         return Response(
             {"detail": "Document request has been canceled."}, status=status.HTTP_200_OK
