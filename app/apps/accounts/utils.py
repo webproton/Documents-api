@@ -26,10 +26,8 @@ class SMSService:
         # Print OTP to console in development mode instead of sending actual SMS
         if getattr(settings, "DEBUG", False):
             logger.info(f"[DEV 2FA MOCK] OTP for {phone_number} is: {code}")
-            print("\n==========================================")
-            print(f"[DEV 2FA MOCK] SMS to {phone_number}: {code}")
-            print("==========================================\n")
             return True
+
         # Fetch required Twilio credentials from configuration
         account_sid = getattr(settings, "TWILIO_ACCOUNT_SID", None)
         auth_token = getattr(settings, "TWILIO_AUTH_TOKEN", None)
