@@ -51,12 +51,27 @@ class TwoFactorRedisManager:
         return str(uuid.uuid4())
 
     @classmethod
-    def create_2fa_session(cls, user_id: int, method: str) -> Tuple[str, str]:
+    def create_2fa_session(
+        cls,
+        user_id: int,
+        method: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> Tuple[str, str]:
         """
         Creates a new 2FA session in Redis with OTP code,
         user context, and attempt tracking.
         Returns a tuple of (pre_auth_token, raw_otp_code).
         """
+
+        # Reject BEFORE touching any existing session — don't destroy
+        # a still-valid session just because a duplicate request came in
+        if cls.is_resend_on_cooldown(user_id):
+            raise ValueError("Please wait before requesting a new verification code.")
+
+        # Only now invalidate any previous session,
+        # since we're allowed to create a new one
+        cls.invalidate_all_user_sessions(user_id)
         # Generate unique pre-auth token and secure 6-digit OTP code
         pre_auth_token = cls.generate_pre_auth_token()
         raw_code = generate_otp_code()
@@ -67,6 +82,8 @@ class TwoFactorRedisManager:
             "user_id": user_id,
             "otp_hash": otp_hash,
             "method": method,
+            "ip": ip_address,
+            "user_agent": hash_otp_code(user_agent) if user_agent else None,
         }
 
         # Store session in Redis with 20 minutes TTL
