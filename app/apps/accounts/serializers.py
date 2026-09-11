@@ -1,6 +1,10 @@
+import re
+
 from django.conf import settings
+from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from google.auth.exceptions import GoogleAuthError
 from google.auth.transport import requests
 from google.oauth2 import id_token
@@ -8,13 +12,97 @@ from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
+    TokenObtainSerializer,
     TokenRefreshSerializer,
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from app.apps.notifications.tasks import send_notification_email_task
 
-from .models import EmailConfirmation, SocialAccount, User
+from .models import EmailConfirmation, SocialAccount, User, UserDevice
+from .redis_manager import TwoFactorRedisManager
+from .tasks import send_email_otp_task, send_sms_task
+
+
+class TwoFactorVerifySerializer(serializers.Serializer):
+    """
+    Serializer to verify 2FA OTP code using pre_auth_token during login.
+    """
+
+    pre_auth_token = serializers.UUIDField(
+        required=True,
+        help_text="Pre-authorization token received from initial login step.",
+    )
+    code = serializers.CharField(
+        required=True,
+        max_length=6,
+        min_length=6,
+        help_text="6-digit OTP code sent via SMS or Email.",
+    )
+
+    def validate_code(self, value):
+        if not re.match(r"^\d{6}$", value):
+            raise serializers.ValidationError(
+                "OTP code must consist of exactly 6 digits."
+            )
+        return value
+
+
+class RequestPhoneConfirmationSerializer(serializers.Serializer):
+    """Request an SMS confirmation code for a phone number."""
+
+    phone_number = serializers.CharField(max_length=32)
+
+    def validate_phone_number(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Phone number is required.")
+
+        if not re.match(r"^\+\d{9,15}$", value):
+            raise serializers.ValidationError(
+                "Phone number must be in international format (e.g. +1234567890)."
+            )
+        return value
+
+
+class ConfirmPhoneSerializer(serializers.Serializer):
+    """Verify the SMS code sent to confirm a phone number."""
+
+    code = serializers.CharField(max_length=6, min_length=6)
+
+
+class Toggle2FASerializer(serializers.Serializer):
+    """Serializer for enabling or disabling 2FA in user profile."""
+
+    enable = serializers.BooleanField(required=True)
+    password = serializers.CharField(write_only=True, required=True)
+
+    method = serializers.ChoiceField(
+        choices=User.TWO_FACTOR_METHOD,
+        default=User.TWO_FACTOR_METHOD.EMAIL,
+        required=False,
+    )
+
+    def validate_password(self, value):
+        """Verify user's current password before changing security settings."""
+        user = self.context["request"].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Incorrect password.")
+        return value
+
+    def validate(self, attrs):
+        """SMS 2FA can only be enabled if the phone number is already confirmed."""
+        user = self.context["request"].user
+        enable = attrs.get("enable")
+        method = attrs.get("method", User.TWO_FACTOR_METHOD.EMAIL)
+
+        if enable and method == User.TWO_FACTOR_METHOD.SMS:
+            if not getattr(user, "phone_number", None) or not user.phone_confirmed:
+                raise serializers.ValidationError(
+                    {"method": "Confirm your phone number before enabling SMS 2FA."}
+                )
+
+        return attrs
 
 
 class SafeTokenRefreshSerializer(TokenRefreshSerializer):
@@ -74,11 +162,87 @@ class LoginSerializer(TokenObtainPairSerializer):
         if user is not None and user.is_blocked:
             raise AuthenticationFailed("This account has been blocked.")
 
-        data = super().validate(attrs)
+        # Verify the login/password WITHOUT calling TokenObtainPairSerializer.validate() —
+        # he also mints tokens, and this cannot be done until the 2FA decision.
+        # TokenObtainSerializer.validate() – up by MRO – only
+        # authenticates and sets self.user.
+        TokenObtainSerializer.validate(self, attrs)
 
-        data["email"] = self.user.email
-        data["id"] = self.user.id
-        return data
+        device = self._get_trusted_device()
+
+        requires_2fa = self.user.is_2fa_enabled and device is None
+
+        if requires_2fa:
+            pre_auth_token, otp_code = TwoFactorRedisManager.create_2fa_session(
+                user_id=self.user.id,
+                method=self.user.two_factor_method,
+            )
+            # Sending OTP via Celery (separately SMS / Email)
+            if self.user.two_factor_method == User.TWO_FACTOR_METHOD.SMS and getattr(
+                self.user, "phone_number", None
+            ):
+
+                transaction.on_commit(
+                    lambda: send_sms_task.delay(self.user.phone_number, otp_code)
+                )
+                message = "Verification code has been sent to your phone."
+            else:
+                transaction.on_commit(
+                    lambda: send_email_otp_task.delay(self.user.id, otp_code)
+                )
+                message = "Verification code has been sent to your email."
+
+            return {
+                "requires_2fa": True,
+                "pre_auth_token": pre_auth_token,
+                "delivery_method": self.user.two_factor_method,
+                "message": message,
+            }
+
+        if device is not None:
+            device.touch()
+
+        # 2FA is not needed (disabled or the device is trusted) – mint tokens now.
+        refresh = self.get_token(self.user)
+
+        # Explicitly update the last_login because we overridden validate()
+        update_last_login(None, self.user)
+
+        return {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "email": self.user.email,
+            "id": self.user.id,
+            "requires_2fa": False,
+        }
+
+    def _get_trusted_device(self):
+        """Return the matching non-revoked, non-expired UserDevice for the
+        incoming device token header, or None."""
+
+        request = self.context.get("request")
+        if not request:
+            return None
+
+        raw_token = request.META.get("HTTP_X_DEVICE_TOKEN") or request.META.get(
+            "X-Device-Token"
+        )
+
+        if not raw_token:
+            return None
+
+        return UserDevice.objects.filter(
+            user=self.user,
+            device_token_hash=UserDevice.hash_token(raw_token),
+            is_revoked=False,
+            expires_at__gt=timezone.now(),
+        ).first()
+
+
+class Resend2FASerializer(serializers.Serializer):
+    """Serializer for requesting a new 2FA OTP code."""
+
+    pre_auth_token = serializers.UUIDField()
 
 
 class UserSerializer(serializers.ModelSerializer):

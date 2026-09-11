@@ -338,3 +338,5 @@ REST_FRAMEWORK.setdefault("DEFAULT_THROTTLE_RATES", {}).update(
         "phone_confirm_send": "30/minute",
     }
 )
+
+DEVICE_TOKEN_HEADER = "HTTP_X_DEVICE_TOKEN"
