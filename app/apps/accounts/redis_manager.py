@@ -69,9 +69,6 @@ class TwoFactorRedisManager:
         if cls.is_resend_on_cooldown(user_id):
             raise ValueError("Please wait before requesting a new verification code.")
 
-        # Only now invalidate any previous session,
-        # since we're allowed to create a new one
-        cls.invalidate_all_user_sessions(user_id)
         # Generate unique pre-auth token and secure 6-digit OTP code
         pre_auth_token = cls.generate_pre_auth_token()
         raw_code = generate_otp_code()

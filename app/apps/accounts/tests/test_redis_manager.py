@@ -1,11 +1,16 @@
 import hmac
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 
 from app.apps.accounts import utils
 from app.apps.accounts.redis_manager import TwoFactorRedisManager
 from app.apps.accounts.tests.factories import UserFactory
+
+User = get_user_model()
+
+EMAIL = User.TWO_FACTOR_METHOD.EMAIL
 
 
 @pytest.fixture(autouse=True)
@@ -23,7 +28,7 @@ class TestTwoFactorRedisManager:
         """Verify session creation sets session payload,
         active tokens set, and cooldown."""
         user = UserFactory()
-        token, code = TwoFactorRedisManager.create_2fa_session(user.id, method="EMAIL")
+        token, code = TwoFactorRedisManager.create_2fa_session(user.id, method=EMAIL)
 
         assert isinstance(token, str)
         assert len(code) == 6 and code.isdigit()
@@ -32,7 +37,7 @@ class TestTwoFactorRedisManager:
         session_data = TwoFactorRedisManager.get_session(token)
         assert session_data is not None
         assert session_data["user_id"] == user.id
-        assert session_data["method"] == "EMAIL"
+        assert session_data["method"] == EMAIL
         assert hmac.compare_digest(session_data["otp_hash"], utils.hash_otp_code(code))
 
         # Check cooldown
@@ -78,7 +83,7 @@ class TestTwoFactorRedisManager:
     def test_verify_otp_code_attempt_decrement_and_lockout(self):
         """Verify incremental attempt tracking and session lockout on 3rd failure."""
         user = UserFactory()
-        token, _ = TwoFactorRedisManager.create_2fa_session(user.id, method="EMAIL")
+        token, _ = TwoFactorRedisManager.create_2fa_session(user.id, method=EMAIL)
 
         # Attempt 1
         valid, uid, err = TwoFactorRedisManager.verify_otp_code(token, "000000")
@@ -101,7 +106,7 @@ class TestTwoFactorRedisManager:
     def test_resend_2fa_code_blocked_by_cooldown(self):
         """Verify resend is rejected while cooldown timer is active."""
         user = UserFactory()
-        token, _ = TwoFactorRedisManager.create_2fa_session(user.id, method="EMAIL")
+        token, _ = TwoFactorRedisManager.create_2fa_session(user.id, method=EMAIL)
 
         success, new_code, res_uid, method, err = TwoFactorRedisManager.resend_2fa_code(
             token
@@ -110,7 +115,7 @@ class TestTwoFactorRedisManager:
         assert success is False
         assert new_code is None
         assert res_uid == user.id
-        assert method == "EMAIL"
+        assert method == EMAIL
         assert "Please wait before requesting" in err
 
     def test_resend_2fa_code_resets_failed_attempts(self):
@@ -118,7 +123,7 @@ class TestTwoFactorRedisManager:
         and resets atomic failed attempts counter."""
         user = UserFactory()
         token, old_code = TwoFactorRedisManager.create_2fa_session(
-            user.id, method="EMAIL"
+            user.id, method=EMAIL
         )
 
         # Fail 2 attempts
@@ -162,7 +167,7 @@ class TestTwoFactorRedisManager:
         """Verify manually invalidating a single session
         removes tracking and attempts."""
         user = UserFactory()
-        token, _ = TwoFactorRedisManager.create_2fa_session(user.id, method="EMAIL")
+        token, _ = TwoFactorRedisManager.create_2fa_session(user.id, method=EMAIL)
 
         TwoFactorRedisManager.invalidate_session(token)
 
@@ -182,18 +187,14 @@ class TestTwoFactorRedisManager:
         user_b = UserFactory()
 
         # User A logs in from Device 1
-        token_a1, _ = TwoFactorRedisManager.create_2fa_session(
-            user_a.id, method="EMAIL"
-        )
+        token_a1, _ = TwoFactorRedisManager.create_2fa_session(user_a.id, method=EMAIL)
 
         # Clear cooldown to simulate User A logging in from Device 2
         cache.delete(f"{TwoFactorRedisManager.RESEND_COOLDOWN_PREFIX}:{user_a.id}")
         token_a2, _ = TwoFactorRedisManager.create_2fa_session(user_a.id, method="SMS")
 
         # User B logs in
-        token_b1, _ = TwoFactorRedisManager.create_2fa_session(
-            user_b.id, method="EMAIL"
-        )
+        token_b1, _ = TwoFactorRedisManager.create_2fa_session(user_b.id, method=EMAIL)
 
         # Revoke ALL sessions for User A
         TwoFactorRedisManager.invalidate_all_user_sessions(user_a.id)

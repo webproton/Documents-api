@@ -5,6 +5,7 @@ from celery import shared_task
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
+from django.template.loader import render_to_string
 
 from .utils import SMSService
 
@@ -46,14 +47,14 @@ def send_email_otp_task(self, user_id: int, code: str) -> bool:
         logger.error(f"send_email_otp_task failed: User ID {user_id} does not exist.")
         return False
 
-    subject = "Your Two-Factor Authentication Verification Code"
+    subject = render_to_string("accounts/emails/otp_email_subject.txt").strip()
     minutes = getattr(settings, "PRE_AUTH_TOKEN_LIFETIME", 1200) // 60
-    message = (
-        f"Hello,\n\n"
-        f"Your verification code is: {code}\n\n"
-        f"This code is valid for {minutes} minutes.\n"
-        f"If you did not request this code, please ignore this email or "
-        f"secure your account."
+    message = render_to_string(
+        "accounts/emails/otp_email.txt",
+        {
+            "code": code,
+            "minutes": minutes,
+        },
     )
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@example.com")
 
