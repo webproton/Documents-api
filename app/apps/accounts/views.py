@@ -1,5 +1,4 @@
 from django.contrib.auth import get_user_model
-from django.db import transaction
 from django.utils import timezone
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, permissions, status
@@ -12,8 +11,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from app.apps.common.serializers import MessageSerializer
 
-from .models import EmailConfirmation, PhoneConfirmation
-from .redis_manager import TwoFactorRedisManager
+from .models import EmailConfirmation
 from .serializers import (
     ConfirmEmailSerializer,
     ConfirmPhoneSerializer,
@@ -31,7 +29,6 @@ from .serializers import (
     TwoFactorVerifySerializer,
     UpdateProfileSerializer,
 )
-from .tasks import send_email_otp_task, send_sms_task
 from .throttling import PhoneConfirmationRateThrottle, TwoFactorResendRateThrottle
 
 User = get_user_model()
@@ -55,40 +52,8 @@ class TwoFactorVerifyView(APIView):
     def post(self, request):
         serializer = TwoFactorVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        pre_auth_token = str(serializer.validated_data["pre_auth_token"])
-        code = serializer.validated_data["code"]
-
-        # Checking the code through Redis Manager
-        is_valid, user_id, error_message = TwoFactorRedisManager.verify_otp_code(
-            pre_auth_token=pre_auth_token,
-            input_code=code,
-        )
-
-        if not is_valid:
-            return Response(
-                {"detail": error_message or "Invalid or expired OTP code."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Get a user and generate full JWT tokens
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            return Response(
-                {"detail": "User not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        refresh = RefreshToken.for_user(user)
-
-        return Response(
-            {
-                "access": str(refresh.access_token),
-                "refresh": str(refresh),
-            },
-            status=status.HTTP_200_OK,
-        )
+        tokens = serializer.save()
+        return Response(tokens, status=status.HTTP_200_OK)
 
 
 class RequestPhoneConfirmationAPIView(APIView):
@@ -109,26 +74,13 @@ class RequestPhoneConfirmationAPIView(APIView):
         responses={200: MessageSerializer, 400: "Invalid phone number."},
     )
     def post(self, request):
-        serializer = RequestPhoneConfirmationSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        phone_number = serializer.validated_data["phone_number"]
-
-        # One active code at a time — old unconfirmed attempts are removed.
-        with transaction.atomic():
-            PhoneConfirmation.objects.filter(
-                user=request.user, is_confirmed=False
-            ).delete()
-
-            confirmation, code = PhoneConfirmation.create_for_phone(
-                user=request.user, phone_number=phone_number
-            )
-
-        send_sms_task.delay(phone_number, code)
-
-        return Response(
-            {"message": "Confirmation code sent."}, status=status.HTTP_200_OK
+        serializer = RequestPhoneConfirmationSerializer(
+            data=request.data, context={"request": request}
         )
+        serializer.is_valid(raise_exception=True)
+        response_data = serializer.save()
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class ConfirmPhoneAPIView(APIView):
@@ -144,29 +96,14 @@ class ConfirmPhoneAPIView(APIView):
         responses={200: MessageSerializer, 400: "Invalid or expired code."},
     )
     def post(self, request):
-        serializer = ConfirmPhoneSerializer(data=request.data)
+        serializer = ConfirmPhoneSerializer(
+            data=request.data, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
 
-        confirmation = (
-            PhoneConfirmation.objects.filter(user=request.user, is_confirmed=False)
-            .order_by("-created")
-            .first()
-        )
+        response_data = serializer.confirm_phone()
 
-        if not confirmation or not confirmation.confirm(
-            serializer.validated_data["code"]
-        ):
-            return Response(
-                {"error": "Invalid or expired code."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return Response(
-            {
-                "message": ("Phone number " "confirmed."),
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class Toggle2FAView(APIView):
@@ -192,25 +129,9 @@ class Toggle2FAView(APIView):
         )
         serializer.is_valid(raise_exception=True)
 
-        user = request.user
-        enable = serializer.validated_data["enable"]
-        method = serializer.validated_data.get("method", User.TWO_FACTOR_METHOD.EMAIL)
+        response_data = serializer.toggle_2fa()
 
-        user.is_2fa_enabled = enable
-
-        if enable:
-            user.two_factor_method = method
-
-        user.save(update_fields=["is_2fa_enabled", "two_factor_method"])
-
-        status_str = "enabled" if enable else "disabled"
-        return Response(
-            {
-                "message": f"Two-factor authentication has been \
-                successfully {status_str}."
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class Resend2FAView(APIView):
@@ -236,37 +157,9 @@ class Resend2FAView(APIView):
         serializer = Resend2FASerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        pre_auth_token = str(serializer.validated_data["pre_auth_token"])
+        response_data = serializer.resend_code()
 
-        # The manager returns the sending method and the code itself
-        # Fetch active session and generate a new code
-        success, new_otp, user_id, method, error_message = (
-            TwoFactorRedisManager.resend_2fa_code(pre_auth_token)
-        )
-
-        if not success:
-            return Response(
-                {"detail": error_message},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            return Response(
-                {"detail": "User not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        # Dispatch code via selected channel
-        if method == User.TWO_FACTOR_METHOD.SMS and getattr(user, "phone_number", None):
-            send_sms_task.delay(user.phone_number, new_otp)
-        else:
-            send_email_otp_task.delay(user.id, new_otp)
-
-        return Response(
-            {"message": "A new verification code has been sent."},
-            status=status.HTTP_200_OK,
-        )
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class SafeTokenRefreshView(TokenRefreshView):

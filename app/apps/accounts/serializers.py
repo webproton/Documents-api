@@ -9,7 +9,7 @@ from google.auth.exceptions import GoogleAuthError
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
     TokenObtainSerializer,
@@ -19,7 +19,13 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from app.apps.notifications.tasks import send_notification_email_task
 
-from .models import EmailConfirmation, SocialAccount, User, UserDevice
+from .models import (
+    EmailConfirmation,
+    PhoneConfirmation,
+    SocialAccount,
+    User,
+    UserDevice,
+)
 from .redis_manager import TwoFactorRedisManager
 from .tasks import send_email_otp_task, send_sms_task
 
@@ -47,28 +53,112 @@ class TwoFactorVerifySerializer(serializers.Serializer):
             )
         return value
 
+    def validate(self, attrs):
+        """Verify the OTP against Redis and resolve the target user."""
+        is_valid, user_id, error_message = TwoFactorRedisManager.verify_otp_code(
+            pre_auth_token=str(attrs["pre_auth_token"]),
+            input_code=attrs["code"],
+        )
+
+        if not is_valid:
+            raise serializers.ValidationError(
+                error_message or "Invalid or expired OTP code."
+            )
+
+        user = User.objects.filter(id=user_id).first()
+        if user is None:
+            raise serializers.ValidationError("User not found.")
+
+        attrs["user"] = user
+        return attrs
+
+    def save(self, **kwargs):
+        """Issue JWT tokens for the verified user."""
+        user = self.validated_data["user"]
+        refresh = RefreshToken.for_user(user)
+
+        return {
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        }
+
 
 class RequestPhoneConfirmationSerializer(serializers.Serializer):
-    """Request an SMS confirmation code for a phone number."""
-
     phone_number = serializers.CharField(max_length=32)
 
-    def validate_phone_number(self, value):
+    def validate_phone_number(self, value: str) -> str:
         value = value.strip()
         if not value:
             raise serializers.ValidationError("Phone number is required.")
 
+        # Checking the E.164 format (+ and 9 to 15 digits)
         if not re.match(r"^\+\d{9,15}$", value):
             raise serializers.ValidationError(
                 "Phone number must be in international format (e.g. +1234567890)."
             )
+
+        user = self.context["request"].user
+        if User.objects.filter(phone_number=value).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError(
+                "This phone number is already registered to another account."
+            )
+
         return value
+
+    @transaction.atomic
+    def save(self, **kwargs) -> dict:
+        """
+        Invalidates old codes, creates a new
+        confirmation record, and dispatches SMS.
+        """
+        user = self.context["request"].user
+        phone_number = self.validated_data["phone_number"]
+
+        # Block and delete inactive attempts
+        PhoneConfirmation.objects.select_for_update().filter(
+            user=user, is_confirmed=False
+        ).delete()
+
+        confirmation, code = PhoneConfirmation.create_for_phone(
+            user=user, phone_number=phone_number
+        )
+
+        # send SMS only after a successful transaction commit
+        transaction.on_commit(lambda: send_sms_task.delay(phone_number, code))
+
+        return {"message": "Confirmation code sent."}
 
 
 class ConfirmPhoneSerializer(serializers.Serializer):
     """Verify the SMS code sent to confirm a phone number."""
 
-    code = serializers.CharField(max_length=6, min_length=6)
+    code = serializers.CharField(max_length=6, min_length=6, required=True)
+
+    def validate(self, attrs):
+        user = self.context["request"].user
+
+        confirmation = (
+            PhoneConfirmation.objects.filter(user=user, is_confirmed=False)
+            .order_by("-created")
+            .first()
+        )
+
+        if not confirmation:
+            raise serializers.ValidationError("Invalid or expired code.")
+
+        attrs["confirmation"] = confirmation
+        return attrs
+
+    @transaction.atomic
+    def confirm_phone(self) -> dict:
+        """Verifies the code and confirms the phone record."""
+        confirmation = self.validated_data["confirmation"]
+        code = self.validated_data["code"]
+
+        if not confirmation.confirm(code):
+            raise serializers.ValidationError("Invalid or expired code.")
+
+        return {"message": "Phone number confirmed."}
 
 
 class Toggle2FASerializer(serializers.Serializer):
@@ -103,6 +193,24 @@ class Toggle2FASerializer(serializers.Serializer):
                 )
 
         return attrs
+
+    def toggle_2fa(self) -> dict:
+        """Updates user's 2FA settings and returns a status response."""
+        user = self.context["request"].user
+        enable = self.validated_data["enable"]
+        method = self.validated_data.get("method", User.TWO_FACTOR_METHOD.EMAIL)
+
+        user.is_2fa_enabled = enable
+
+        if enable:
+            user.two_factor_method = method
+
+        user.save(update_fields=["is_2fa_enabled", "two_factor_method"])
+
+        status_str = "enabled" if enable else "disabled"
+        return {
+            "message": f"Two-factor authentication has been successfully {status_str}."
+        }
 
 
 class SafeTokenRefreshSerializer(TokenRefreshSerializer):
@@ -242,7 +350,42 @@ class LoginSerializer(TokenObtainPairSerializer):
 class Resend2FASerializer(serializers.Serializer):
     """Serializer for requesting a new 2FA OTP code."""
 
-    pre_auth_token = serializers.UUIDField()
+    pre_auth_token = serializers.UUIDField(required=True)
+
+    def validate(self, attrs):
+        pre_auth_token = str(attrs["pre_auth_token"])
+
+        # Reviewing and regenerating code in Redis
+        success, new_otp, user_id, method, error_message = (
+            TwoFactorRedisManager.resend_2fa_code(pre_auth_token)
+        )
+
+        if not success:
+            raise ValidationError(error_message or "Invalid or expired session.")
+
+        user = User.objects.filter(id=user_id, is_active=True).first()
+        if not user or user.is_blocked:
+            raise ValidationError("User not found or account is blocked.")
+
+        attrs["user"] = user
+        attrs["new_otp"] = new_otp
+        attrs["method"] = method
+        return attrs
+
+    def resend_code(self) -> dict:
+        """Dispatches OTP task via appropriate channel."""
+        user = self.validated_data["user"]
+        new_otp = self.validated_data["new_otp"]
+        method = self.validated_data["method"]
+
+        if method == User.TWO_FACTOR_METHOD.SMS and getattr(user, "phone_number", None):
+            send_sms_task.delay(user.phone_number, new_otp)
+            message = "A new verification code has been sent to your phone."
+        else:
+            send_email_otp_task.delay(user.id, new_otp)
+            message = "A new verification code has been sent to your email."
+
+        return {"message": message}
 
 
 class UserSerializer(serializers.ModelSerializer):

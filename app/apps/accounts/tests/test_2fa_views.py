@@ -232,17 +232,20 @@ def test_resend_2fa_failed_session(mock_resend_2fa, mock_cooldown, api_client):
 
 @pytest.mark.django_db
 @patch("app.apps.accounts.tasks.send_sms_task.delay")
-def test_request_phone_confirmation_success(mock_sms_task, api_client, user):
+def test_request_phone_confirmation_success(
+    mock_sms_task, api_client, user, django_capture_on_commit_callbacks
+):
     api_client.force_authenticate(user=user)
 
     PhoneConfirmationFactory(user=user, is_confirmed=False)
 
     url = reverse("apps.accounts:phone-request-confirmation")
-    response = api_client.post(
-        url,
-        {"phone_number": "+380971234567"},
-        format="json",
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        response = api_client.post(
+            url,
+            {"phone_number": "+380971234567"},
+            format="json",
+        )
 
     assert response.status_code == status.HTTP_200_OK
 
