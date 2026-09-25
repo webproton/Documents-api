@@ -1,13 +1,19 @@
 import uuid
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
-from apps.accounts.tests.factories import PhoneConfirmationFactory, UserFactory
+from apps.accounts.tests.factories import (
+    PhoneConfirmationFactory,
+    UserDeviceFactory,
+    UserFactory,
+)
 from django.core.cache import cache
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 
-from app.apps.accounts.models import PhoneConfirmation, User
+from app.apps.accounts.models import PhoneConfirmation, User, UserDevice
 
 
 @pytest.fixture(autouse=True)
@@ -19,6 +25,124 @@ def clear_redis_cache():
 # ==============================================================================
 # LoginAPIView Tests
 # ==============================================================================
+
+
+@pytest.mark.django_db
+def test_login_bypasses_2fa_with_valid_trusted_device(api_client):
+    """
+    If 2FA is enabled for the user, but a valid X-Device-Token header is provided
+    for a trusted device, 2FA verification is bypassed and
+    JWT tokens are returned directly.
+    """
+    password = "SecurePass123!"
+    raw_device_token = "valid-secret-device-token-12345"
+
+    # Create a user with 2FA enabled using UserFactory
+    user = UserFactory(is_2fa_enabled=True)
+    user.set_password(password)
+    user.save()
+
+    # Create a trusted device linked to the user using UserDeviceFactory
+    device = UserDeviceFactory(
+        user=user,
+        device_token_hash=UserDevice.hash_token(raw_device_token),
+        expires_at=timezone.now() + timedelta(days=30),
+        is_revoked=False,
+    )
+
+    url = reverse("apps.accounts:login")
+
+    # Send a POST request with the device token in the HTTP header
+    response = api_client.post(
+        url,
+        {"email": user.email, "password": password},
+        format="json",
+        HTTP_X_DEVICE_TOKEN=raw_device_token,
+    )
+
+    # Verify successful HTTP 200 OK response
+    assert response.status_code == status.HTTP_200_OK
+    # Ensure 2FA is not required
+    assert response.data["requires_2fa"] is False
+    # Ensure access and refresh JWT tokens are present
+    assert "access" in response.data
+    assert "refresh" in response.data
+
+    # Refresh the device instance from the database
+    device.refresh_from_db()
+    # Verify that touch() was executed and updated the last login timestamp
+    assert device.last_login_at is not None
+
+
+@pytest.mark.django_db
+def test_login_requires_2fa_when_device_token_is_revoked(api_client):
+    """
+    If a device token is provided but the device is revoked (is_revoked=True),
+    the device is ignored and 2FA is required.
+    """
+    password = "SecurePass123!"
+    raw_token = "revoked-device-token-xyz"
+
+    # Create a user with 2FA enabled
+    user = UserFactory(is_2fa_enabled=True)
+    user.set_password(password)
+    user.save()
+
+    # Create a revoked device in the database using UserDeviceFactory
+    UserDeviceFactory(
+        user=user,
+        device_token_hash=UserDevice.hash_token(raw_token),
+        expires_at=timezone.now() + timedelta(days=30),
+        is_revoked=True,
+    )
+
+    url = reverse("apps.accounts:login")
+
+    # Perform a login request using the revoked device token
+    response = api_client.post(
+        url,
+        {"email": user.email, "password": password},
+        format="json",
+        HTTP_X_DEVICE_TOKEN=raw_token,
+    )
+
+    # Expect HTTP 202 ACCEPTED (2FA step required)
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    # Verify that 2FA is required
+    assert response.data["requires_2fa"] is True
+    # Verify the presence of the pre_auth_token for the next authentication step
+    assert "pre_auth_token" in response.data
+
+
+@pytest.mark.django_db
+def test_login_bypasses_2fa_if_2fa_disabled_even_without_device(api_client):
+    """
+    Verifies that if 2FA is disabled (is_2fa_enabled = False),
+    login succeeds without 2FA even without a trusted device header.
+    """
+    password = "SecurePass123!"
+
+    # Create a user with 2FA disabled using UserFactory
+    user = UserFactory(is_2fa_enabled=False)
+    user.set_password(password)
+    user.save()
+
+    url = reverse("apps.accounts:login")
+
+    # Send a login request from a new device (without X-Device-Token header)
+    response = api_client.post(
+        url,
+        {"email": user.email, "password": password},
+        format="json",
+    )
+
+    # Expect HTTP 200 OK
+    assert response.status_code == status.HTTP_200_OK
+    # Ensure 2FA is not required
+    assert response.data["requires_2fa"] is False
+    # Ensure access and refresh tokens are issued
+    assert "access" in response.data
+    assert "refresh" in response.data
 
 
 @pytest.mark.django_db
@@ -93,6 +217,55 @@ def test_login_requires_2fa_sms(
 # ==============================================================================
 # TwoFactorVerifyView Tests
 # ==============================================================================
+
+
+@pytest.mark.django_db
+@patch("app.apps.accounts.redis_manager.TwoFactorRedisManager.verify_otp_code")
+def test_2fa_verify_issues_device_token_when_remember_device_true(
+    mock_verify_otp, api_client
+):
+    """
+    When confirming 2FA with remember_device = True, a device_token is issued
+    and a corresponding UserDevice record is created in the database.
+    """
+    # Create a test user via factory
+    user = UserFactory()
+
+    # Mock successful OTP verification returning the user's ID
+    mock_verify_otp.return_value = (True, user.id, "")
+    valid_uuid = str(uuid.uuid4())
+
+    url = reverse("apps.accounts:2fa-verify")
+
+    # Send verification request with remember_device = True
+    response = api_client.post(
+        url,
+        {
+            "pre_auth_token": valid_uuid,
+            "code": "123456",
+            "remember_device": True,
+        },
+        format="json",
+        HTTP_USER_AGENT="Pytest-User-Agent",
+    )
+
+    # Verify HTTP 200 OK status
+    assert response.status_code == status.HTTP_200_OK
+    # Verify that raw device_token is present in the response
+    assert "device_token" in response.data
+
+    # Extract raw token and compute its hash
+    raw_token = response.data["device_token"]
+    token_hash = UserDevice.hash_token(raw_token)
+
+    # Retrieve the device record from the DB by hash
+    device_in_db = UserDevice.objects.filter(
+        user=user, device_token_hash=token_hash
+    ).first()
+
+    # Assert device creation and correct User-Agent persistence
+    assert device_in_db is not None
+    assert device_in_db.user_agent == "Pytest-User-Agent"
 
 
 @pytest.mark.django_db

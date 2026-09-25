@@ -2,16 +2,18 @@
 
 import hashlib
 import hmac
+import secrets
 import uuid
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models, transaction
 from django.utils import timezone
 from model_utils import Choices
 from model_utils.models import TimeStampedModel
 
-from .utils import generate_otp_code, hash_otp_code
+from .utils import generate_otp_code, get_client_ip, get_geoip_location, hash_otp_code
 
 
 class UserDevice(TimeStampedModel):
@@ -97,6 +99,23 @@ class UserDevice(TimeStampedModel):
     def revoke(self) -> None:
         self.is_revoked = True
         self.save(update_fields=["is_revoked"])
+
+    @classmethod
+    def issue(cls, user, request) -> tuple["UserDevice", str]:
+        raw_token = secrets.token_urlsafe(32)
+        ip_address = get_client_ip(request)
+
+        instance = cls.objects.create(
+            user=user,
+            device_token_hash=cls.hash_token(raw_token),
+            user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            ip_address=ip_address,
+            location=get_geoip_location(ip_address),
+            expires_at=timezone.now()
+            + timedelta(days=settings.TRUSTED_DEVICE_LIFETIME_DAYS),
+            last_login_at=timezone.now(),
+        )
+        return instance, raw_token
 
 
 def avatar_upload_path(instance, filename):

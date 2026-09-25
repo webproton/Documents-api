@@ -46,6 +46,9 @@ class TwoFactorVerifySerializer(serializers.Serializer):
         help_text="6-digit OTP code sent via SMS or Email.",
     )
 
+    remember_device = serializers.BooleanField(required=False, default=True)
+
+    # Ensure the OTP code consists of exactly 6 digits
     def validate_code(self, value):
         if not re.match(r"^\d{6}$", value):
             raise serializers.ValidationError(
@@ -75,12 +78,24 @@ class TwoFactorVerifySerializer(serializers.Serializer):
     def save(self, **kwargs):
         """Issue JWT tokens for the verified user."""
         user = self.validated_data["user"]
+        remember_device = self.validated_data.get("remember_device", True)
+        request = self.context.get("request")
+
+        # Mint JWT access and refresh tokens for the authenticated user
         refresh = RefreshToken.for_user(user)
 
-        return {
+        response_data = {
             "access": str(refresh.access_token),
             "refresh": str(refresh),
+            "email": user.email,
+            "id": user.id,
         }
+        # Issue a trusted device token if requested and HTTP request context is available
+        if remember_device and request:
+            _, raw_token = UserDevice.issue(user, request)
+            response_data["device_token"] = raw_token
+
+        return response_data
 
 
 class RequestPhoneConfirmationSerializer(serializers.Serializer):
@@ -276,8 +291,13 @@ class LoginSerializer(TokenObtainPairSerializer):
         # authenticates and sets self.user.
         TokenObtainSerializer.validate(self, attrs)
 
+        # Retrieve the matching active
+        # trusted device for the request based on the device token header
         device = self._get_trusted_device()
 
+        # Require 2FA
+        # only if the user explicitly enabled it AND the current device
+        # is not trusted/recognized
         requires_2fa = self.user.is_2fa_enabled and device is None
 
         if requires_2fa:

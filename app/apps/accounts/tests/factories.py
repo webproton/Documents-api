@@ -108,3 +108,11 @@ class UserDeviceFactory(factory.django.DjangoModelFactory):
     ip_address = "192.168.1.1"
     expires_at = factory.LazyFunction(lambda: timezone.now() + timedelta(days=60))
     is_revoked = False
+
+    class Params:
+        # Allows passing a raw_token directly when overriding the hash
+        raw_token = factory.Trait(
+            device_token_hash=factory.LazyAttribute(
+                lambda o: UserDevice.hash_token(o.raw_token_value)
+            )
+        )

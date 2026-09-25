@@ -29,7 +29,11 @@ from .serializers import (
     TwoFactorVerifySerializer,
     UpdateProfileSerializer,
 )
-from .throttling import PhoneConfirmationRateThrottle, TwoFactorResendRateThrottle
+from .throttling import (
+    PhoneConfirmationRateThrottle,
+    TwoFactorConfirmRateThrottle,
+    TwoFactorResendRateThrottle,
+)
 
 User = get_user_model()
 
@@ -40,6 +44,7 @@ class TwoFactorVerifyView(APIView):
     """
 
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [TwoFactorConfirmRateThrottle]
 
     @swagger_auto_schema(
         operation_summary="Verify 2FA OTP code",
@@ -50,10 +55,16 @@ class TwoFactorVerifyView(APIView):
         },
     )
     def post(self, request):
-        serializer = TwoFactorVerifySerializer(data=request.data)
+        # Pass request in context so the serializer
+        # can extract client IP/User-Agent for device tracking
+        serializer = TwoFactorVerifySerializer(
+            data=request.data, context={"request": request}
+        )
+
         serializer.is_valid(raise_exception=True)
-        tokens = serializer.save()
-        return Response(tokens, status=status.HTTP_200_OK)
+        # Complete OTP verification and obtain JWT pair along with optional device token
+        tokens_and_device = serializer.save()
+        return Response(tokens_and_device, status=status.HTTP_200_OK)
 
 
 class RequestPhoneConfirmationAPIView(APIView):
