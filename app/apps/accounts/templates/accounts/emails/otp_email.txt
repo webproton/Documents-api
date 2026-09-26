@@ -1,0 +1,7 @@
+# app/apps/accounts/templates/accounts/emails/otp_email.txt
+Hello,
+
+Your verification code is: {{ code }}
+
+This code is valid for {{ minutes }} minutes.
+If you did not request this code, please ignore this email or secure your account.

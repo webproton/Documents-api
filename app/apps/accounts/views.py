@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, permissions, status
@@ -13,16 +14,163 @@ from app.apps.common.serializers import MessageSerializer
 from .models import EmailConfirmation
 from .serializers import (
     ConfirmEmailSerializer,
+    ConfirmPhoneSerializer,
     GoogleAuthSerializer,
     LoginSerializer,
     LogoutSerializer,
     ProfileSerializer,
     RegisterResponseSerializer,
     RegisterSerializer,
+    RequestPhoneConfirmationSerializer,
+    Resend2FASerializer,
     SafeTokenRefreshSerializer,
+    Toggle2FASerializer,
     TokenResponseSerializer,
+    TwoFactorVerifySerializer,
     UpdateProfileSerializer,
 )
+from .throttling import (
+    PhoneConfirmationRateThrottle,
+    TwoFactorConfirmRateThrottle,
+    TwoFactorResendRateThrottle,
+)
+
+User = get_user_model()
+
+
+class TwoFactorVerifyView(APIView):
+    """
+    Verify 2FA OTP code and issue final JWT tokens.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [TwoFactorConfirmRateThrottle]
+
+    @swagger_auto_schema(
+        operation_summary="Verify 2FA OTP code",
+        request_body=TwoFactorVerifySerializer,
+        responses={
+            200: "JWT tokens issued successfully.",
+            400: "Invalid or expired OTP code.",
+        },
+    )
+    def post(self, request):
+        # Pass request in context so the serializer
+        # can extract client IP/User-Agent for device tracking
+        serializer = TwoFactorVerifySerializer(
+            data=request.data, context={"request": request}
+        )
+
+        serializer.is_valid(raise_exception=True)
+        # Complete OTP verification and obtain JWT pair along with optional device token
+        tokens_and_device = serializer.save()
+        return Response(tokens_and_device, status=status.HTTP_200_OK)
+
+
+class RequestPhoneConfirmationAPIView(APIView):
+    """
+    Send an SMS confirmation code to a phone number the user wants
+    to use for SMS-based 2FA.
+
+    Any previous unconfirmed attempt for this user is invalidated —
+    only one active code should exist at a time.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [PhoneConfirmationRateThrottle]
+
+    @swagger_auto_schema(
+        operation_summary="Request phone confirmation code",
+        request_body=RequestPhoneConfirmationSerializer,
+        responses={200: MessageSerializer, 400: "Invalid phone number."},
+    )
+    def post(self, request):
+        serializer = RequestPhoneConfirmationSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        response_data = serializer.save()
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
+class ConfirmPhoneAPIView(APIView):
+    """
+    Verify the SMS code and mark the user's phone number as confirmed.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Confirm phone number",
+        request_body=ConfirmPhoneSerializer,
+        responses={200: MessageSerializer, 400: "Invalid or expired code."},
+    )
+    def post(self, request):
+        serializer = ConfirmPhoneSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+
+        response_data = serializer.confirm_phone()
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
+class Toggle2FAView(APIView):
+    """Enables or disables 2FA for the authenticated user."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Toggle 2FA settings",
+        operation_description=(
+            "Enable or disable 2FA authentication "
+            "and update preferred delivery method."
+        ),
+        request_body=Toggle2FASerializer,
+        responses={
+            200: MessageSerializer,
+            400: "Invalid password or unconfirmed phone number.",
+        },
+    )
+    def post(self, request):
+        serializer = Toggle2FASerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+
+        response_data = serializer.toggle_2fa()
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
+class Resend2FAView(APIView):
+    """
+    Resends a new OTP code if 2FA session is still active and not on cooldown.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [TwoFactorResendRateThrottle]
+
+    @swagger_auto_schema(
+        operation_summary="Resend 2FA verification code",
+        operation_description=(
+            "Issue a new OTP via SMS or" "Email using active pre-authorization token."
+        ),
+        request_body=Resend2FASerializer,
+        responses={
+            200: MessageSerializer,
+            400: "Invalid session, expired token, or rate limit exceeded.",
+        },
+    )
+    def post(self, request):
+        serializer = Resend2FASerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        response_data = serializer.resend_code()
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 class SafeTokenRefreshView(TokenRefreshView):
@@ -103,16 +251,34 @@ class LogoutAPIView(APIView):
 
 
 class LoginAPIView(TokenObtainPairView):
-    """Authenticate a user and return JWT tokens."""
+    """
+    Authenticate a user.
+
+    If 2FA is disabled: returns JWT access and refresh tokens (200 OK).
+    If 2FA is enabled: generates pre_auth_token, sends OTP code asynchronously,
+    and returns pre_auth_token with 202 Accepted.
+    """
 
     serializer_class = LoginSerializer
 
     @swagger_auto_schema(
-        operation_summary="Login",
-        responses={200: TokenResponseSerializer},
+        operation_summary="Login user",
+        responses={
+            200: "JWT tokens returned (2FA disabled)",
+            202: "2FA required. Returns pre_auth_token.",
+            401: "Invalid credentials.",
+        },
     )
     def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        data = serializer.validated_data
+
+        if data.get("requires_2fa"):
+            return Response(data, status=status.HTTP_202_ACCEPTED)
+
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class RegisterAPIView(APIView):

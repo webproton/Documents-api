@@ -1,0 +1,2 @@
+# app/apps/accounts/templates/accounts/emails/otp_email_subject.txt
+Your Two-Factor Authentication Verification Code

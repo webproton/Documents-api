@@ -19,4 +19,4 @@ ignore =
         E203,
 
 
-max-line-length = 88
+max-line-length = 90

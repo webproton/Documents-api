@@ -1,12 +1,121 @@
 # app/apps/accounts/models.py
 
+import hashlib
+import hmac
+import secrets
 import uuid
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from model_utils import Choices
+from model_utils.models import TimeStampedModel
+
+from .utils import generate_otp_code, get_client_ip, get_geoip_location, hash_otp_code
+
+
+class UserDevice(TimeStampedModel):
+    """
+    Model for storing trusted user devices to bypass 2FA challenges.
+
+    Inherits 'created' and 'modified' timestamps from TimeStampedModel.
+    Stores a SHA-256 hash of the client token sent back via cookies/headers.
+    """
+
+    user = models.ForeignKey(
+        "User",
+        on_delete=models.CASCADE,
+        related_name="devices",
+        verbose_name="User",
+        help_text="User owning this trusted device",
+    )
+    is_revoked = models.BooleanField(default=False)
+
+    device_token_hash = models.CharField(
+        max_length=64,
+        db_index=True,
+        verbose_name="Device token hash",
+        help_text="SHA-256 hash of the unique device identification token",
+    )
+
+    user_agent = models.CharField(
+        max_length=512,
+        blank=True,
+        verbose_name="User agent",
+        help_text="User-Agent browser string associated with the device",
+    )
+
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        verbose_name="IP address",
+        help_text="Last recorded IP address of the device",
+    )
+
+    expires_at = models.DateTimeField(
+        verbose_name="Expires at",
+        help_text="Expiration timestamp for the trusted device session",
+    )
+
+    last_login_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Last login at",
+        help_text="Timestamp of the last successful authentication from this device",
+    )
+
+    location = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name="Location",
+        help_text="City and country resolved from IP address",
+    )
+
+    class Meta:
+        verbose_name = "User device"
+        verbose_name_plural = "User devices"
+        ordering = ["-last_login_at"]
+
+    @staticmethod
+    def hash_token(token: str) -> str:
+        """Calculate SHA-256 hash for raw device token."""
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    def is_expired(self) -> bool:
+        """Check if the trusted device session has expired."""
+        return timezone.now() > self.expires_at
+
+    def __str__(self) -> str:
+        return f"Device {self.device_token_hash[:8]} for {self.user.email}"
+
+    def touch(self) -> None:
+        """Call this when the device is
+        actually used to skip 2FA — not on every save()."""
+        self.last_login_at = timezone.now()
+        self.save(update_fields=["last_login_at"])
+
+    def revoke(self) -> None:
+        self.is_revoked = True
+        self.save(update_fields=["is_revoked"])
+
+    @classmethod
+    def issue(cls, user, request) -> tuple["UserDevice", str]:
+        raw_token = secrets.token_urlsafe(32)
+        ip_address = get_client_ip(request)
+
+        instance = cls.objects.create(
+            user=user,
+            device_token_hash=cls.hash_token(raw_token),
+            user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            ip_address=ip_address,
+            location=get_geoip_location(ip_address),
+            expires_at=timezone.now()
+            + timedelta(days=settings.TRUSTED_DEVICE_LIFETIME_DAYS),
+            last_login_at=timezone.now(),
+        )
+        return instance, raw_token
 
 
 def avatar_upload_path(instance, filename):
@@ -41,6 +150,12 @@ class User(AbstractUser):
         ("EMAIL", "Email"),
         ("GOOGLE", "Google"),
     )
+
+    TWO_FACTOR_METHOD = Choices(
+        ("EMAIL", "Email"),
+        ("SMS", "SMS"),
+    )
+
     is_blocked = models.BooleanField(default=False)
 
     registration_method = models.CharField(
@@ -53,6 +168,35 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
 
     avatar = models.ImageField(blank=True, null=True, upload_to=avatar_upload_path)
+
+    is_2fa_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Is 2FA enabled",
+        help_text="Designates whether two-factor"
+        "authentication is enabled for this user",
+    )
+
+    two_factor_method = models.CharField(
+        max_length=20,
+        choices=TWO_FACTOR_METHOD,
+        default=TWO_FACTOR_METHOD.EMAIL,
+        verbose_name="2FA Method",
+        help_text="Primary two-factor authentication channel",
+    )
+
+    phone_number = models.CharField(
+        max_length=32,
+        blank=True,
+        null=True,
+        verbose_name="Phone number",
+        help_text="Phone number for SMS-based 2FA",
+    )
+
+    phone_confirmed = models.BooleanField(
+        default=False,
+        verbose_name="Phone confirmed",
+        help_text="Whether phone_number has been verified via SMS code",
+    )
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -173,6 +317,7 @@ class EmailConfirmation(models.Model):
             # If not found → return None instead of exception
             return None
 
+    @transaction.atomic
     def confirm_email(self):
         """
         Confirm user's email and activate account.
@@ -248,3 +393,75 @@ class EmailConfirmation(models.Model):
 
     def __str__(self):
         return f"EmailConfirmation for {self.user.email}"
+
+
+class PhoneConfirmation(TimeStampedModel):
+    """
+    Model for confirming a user's phone number before it can be used
+    for SMS-based 2FA. Mirrors EmailConfirmation, but the code is
+    delivered via SMS and stored as a hash, not a plain UUID link.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="phone_confirmations",
+        verbose_name="User",
+    )
+
+    phone_number = models.CharField(
+        max_length=32,
+        verbose_name="Phone number",
+        help_text="The phone number this confirmation attempt is for",
+    )
+
+    code_hash = models.CharField(max_length=64)
+
+    expires_at = models.DateTimeField(
+        verbose_name="Expires at",
+        help_text="Expiration time for the confirmation code",
+    )
+
+    is_confirmed = models.BooleanField(default=False)
+
+    CODE_TTL_MINUTES = 20
+
+    @classmethod
+    def create_for_phone(
+        cls, user, phone_number: str
+    ) -> tuple["PhoneConfirmation", str]:
+        """Create a new confirmation attempt;
+        returns (instance, raw_code) to send via SMS."""
+        raw_code = generate_otp_code()
+
+        instance = cls.objects.create(
+            user=user,
+            phone_number=phone_number,
+            code_hash=hash_otp_code(raw_code),
+            expires_at=timezone.now() + timedelta(minutes=cls.CODE_TTL_MINUTES),
+        )
+        return instance, raw_code
+
+    def is_expired(self) -> bool:
+        return timezone.now() > self.expires_at
+
+    @transaction.atomic
+    def confirm(self, raw_code: str) -> bool:
+        """Verify raw_code; on success mark confirmed and set user.phone_confirmed."""
+        if self.is_confirmed or self.is_expired():
+            return False
+
+        if not hmac.compare_digest(hash_otp_code(raw_code), self.code_hash):
+            return False
+
+        self.is_confirmed = True
+        self.save(update_fields=["is_confirmed"])
+
+        self.user.phone_number = self.phone_number
+        self.user.phone_confirmed = True
+        self.user.save(update_fields=["phone_number", "phone_confirmed"])
+
+        return True
+
+    def __str__(self) -> str:
+        return f"PhoneConfirmation for {self.user.email} ({self.phone_number})"
