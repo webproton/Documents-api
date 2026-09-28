@@ -16,6 +16,29 @@ from model_utils.models import TimeStampedModel
 from .utils import generate_otp_code, get_client_ip, get_geoip_location, hash_otp_code
 
 
+class UserDeviceQuerySet(models.QuerySet):
+    """Custom queryset for UserDevice with reusable domain shortcuts."""
+
+    def active(self):
+        """Non-revoked, non-expired devices ordered by last login."""
+        return self.filter(
+            is_revoked=False,
+            expires_at__gt=timezone.now(),
+        ).order_by("-last_login_at")
+
+    def revoke_all_except(self, raw_token: str | None = None) -> int:
+        """
+        Bulk-revoke all active/non-revoked devices, optionally keeping the one
+        identified by raw_token (current session).
+
+        Returns the number of revoked devices.
+        """
+        qs = self.filter(is_revoked=False)
+        if raw_token:
+            qs = qs.exclude(device_token_hash=self.model.hash_token(raw_token))
+        return qs.update(is_revoked=True)
+
+
 class UserDevice(TimeStampedModel):
     """
     Model for storing trusted user devices to bypass 2FA challenges.
@@ -23,6 +46,8 @@ class UserDevice(TimeStampedModel):
     Inherits 'created' and 'modified' timestamps from TimeStampedModel.
     Stores a SHA-256 hash of the client token sent back via cookies/headers.
     """
+
+    objects = UserDeviceQuerySet.as_manager()
 
     user = models.ForeignKey(
         "User",

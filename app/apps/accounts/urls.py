@@ -14,6 +14,9 @@ from .views import (
     SafeTokenRefreshView,
     Toggle2FAView,
     TwoFactorVerifyView,
+    UserDeviceListView,
+    UserDeviceRevokeAllView,
+    UserDeviceRevokeView,
 )
 
 app_name = "apps.accounts"
@@ -52,4 +55,18 @@ urlpatterns = [
         name="phone-confirm",
     ),
     path("profile/2fa/toggle/", Toggle2FAView.as_view(), name="profile-2fa-toggle"),
+    # --------------------------------------------------------------------------
+    # Device / Session Management
+    # --------------------------------------------------------------------------
+    path("devices/", UserDeviceListView.as_view(), name="device-list"),
+    path(
+        "devices/revoke-all/",
+        UserDeviceRevokeAllView.as_view(),
+        name="device-revoke-all",
+    ),
+    path(
+        "devices/<int:pk>/revoke/",
+        UserDeviceRevokeView.as_view(),
+        name="device-revoke",
+    ),
 ]

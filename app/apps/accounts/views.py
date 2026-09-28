@@ -11,7 +11,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from app.apps.common.serializers import MessageSerializer
 
-from .models import EmailConfirmation
+from .models import EmailConfirmation, UserDevice
 from .serializers import (
     ConfirmEmailSerializer,
     ConfirmPhoneSerializer,
@@ -28,6 +28,8 @@ from .serializers import (
     TokenResponseSerializer,
     TwoFactorVerifySerializer,
     UpdateProfileSerializer,
+    UserDeviceSerializer,
+    _extract_raw_device_token,
 )
 from .throttling import (
     PhoneConfirmationRateThrottle,
@@ -431,5 +433,78 @@ class GoogleAuthAPIView(APIView):
                 "id": user.id,
                 "email": user.email,
             },
+            status=status.HTTP_200_OK,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Device / Session Management
+# ---------------------------------------------------------------------------
+
+
+class UserDeviceListView(generics.ListAPIView):
+    """
+    GET /api/accounts/devices/
+
+    List active (non-revoked, non-expired) trusted devices for the authenticated user.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserDeviceSerializer
+    queryset = UserDevice.objects.active()
+
+    def get_queryset(self):
+        return super().get_queryset().filter(user=self.request.user)
+
+
+class UserDeviceRevokeView(APIView):
+    """
+    POST /api/accounts/devices/<pk>/revoke/
+
+    Deactivate a specific device owned by the authenticated user.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Revoke device",
+        operation_description="Revoke a trusted device"
+        "belonging to the authenticated user.",
+        responses={200: MessageSerializer, 404: "Device not found."},
+    )
+    def post(self, request, pk):
+        device = generics.get_object_or_404(request.user.devices, pk=pk)
+        device.revoke()
+        return Response(
+            {"message": "Device revoked successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request, pk):
+        return self.post(request, pk)
+
+
+class UserDeviceRevokeAllView(APIView):
+    """
+    POST /api/accounts/devices/revoke-all/
+
+    Deactivate all trusted devices for the authenticated user, except the current one.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Revoke all other devices",
+        operation_description=(
+            "Deactivate all trusted devices of the current user, "
+            "excluding the device identified by current session token."
+        ),
+        responses={200: MessageSerializer},
+    )
+    def post(self, request):
+        raw_token = _extract_raw_device_token(request)
+        revoked_count = request.user.devices.revoke_all_except(raw_token)
+        return Response(
+            {"message": f"Revoked {revoked_count} device(s) successfully."},
             status=status.HTTP_200_OK,
         )
