@@ -13,30 +13,14 @@ from django.utils import timezone
 from model_utils import Choices
 from model_utils.models import TimeStampedModel
 
-from .utils import generate_otp_code, get_client_ip, get_geoip_location, hash_otp_code
-
-
-class UserDeviceQuerySet(models.QuerySet):
-    """Custom queryset for UserDevice with reusable domain shortcuts."""
-
-    def active(self):
-        """Non-revoked, non-expired devices ordered by last login."""
-        return self.filter(
-            is_revoked=False,
-            expires_at__gt=timezone.now(),
-        ).order_by("-last_login_at")
-
-    def revoke_all_except(self, raw_token: str | None = None) -> int:
-        """
-        Bulk-revoke all active/non-revoked devices, optionally keeping the one
-        identified by raw_token (current session).
-
-        Returns the number of revoked devices.
-        """
-        qs = self.filter(is_revoked=False)
-        if raw_token:
-            qs = qs.exclude(device_token_hash=self.model.hash_token(raw_token))
-        return qs.update(is_revoked=True)
+from .querysets import UserDeviceQuerySet
+from .utils import (
+    extract_raw_device_token,
+    generate_otp_code,
+    get_client_ip,
+    get_geoip_location,
+    hash_otp_code,
+)
 
 
 class UserDevice(TimeStampedModel):
@@ -128,16 +112,39 @@ class UserDevice(TimeStampedModel):
     @classmethod
     def issue(cls, user, request) -> tuple["UserDevice", str]:
         raw_token = secrets.token_urlsafe(32)
-        ip_address = get_client_ip(request)
+        ip_address = get_client_ip(request) if request else None
+        user_agent = request.META.get("HTTP_USER_AGENT", "") if request else ""
+        location = get_geoip_location(ip_address) if ip_address else ""
+        expires_at = timezone.now() + timedelta(
+            days=settings.TRUSTED_DEVICE_LIFETIME_DAYS
+        )
+
+        # Check if an existing device token
+        # was passed in the request (e.g. previously revoked device)
+        existing_raw_token = extract_raw_device_token(request) if request else None
+        if existing_raw_token:
+            existing_device = cls.objects.filter(
+                user=user,
+                device_token_hash=cls.hash_token(existing_raw_token),
+            ).first()
+            if existing_device:
+                existing_device.device_token_hash = cls.hash_token(raw_token)
+                existing_device.is_revoked = False
+                existing_device.expires_at = expires_at
+                existing_device.last_login_at = timezone.now()
+                existing_device.ip_address = ip_address
+                existing_device.location = location
+                existing_device.user_agent = user_agent
+                existing_device.save()
+                return existing_device, raw_token
 
         instance = cls.objects.create(
             user=user,
             device_token_hash=cls.hash_token(raw_token),
-            user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            user_agent=user_agent,
             ip_address=ip_address,
-            location=get_geoip_location(ip_address),
-            expires_at=timezone.now()
-            + timedelta(days=settings.TRUSTED_DEVICE_LIFETIME_DAYS),
+            location=location,
+            expires_at=expires_at,
             last_login_at=timezone.now(),
         )
         return instance, raw_token

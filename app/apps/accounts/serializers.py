@@ -29,6 +29,7 @@ from .models import (
 )
 from .redis_manager import TwoFactorRedisManager
 from .tasks import send_email_otp_task, send_sms_task
+from .utils import extract_raw_device_token
 
 
 class TwoFactorVerifySerializer(serializers.Serializer):
@@ -769,69 +770,36 @@ class RegisterResponseSerializer(serializers.Serializer):
     status = serializers.CharField()
 
 
-def _extract_raw_device_token(request) -> str | None:
-    """
-    Extract the raw device token from request headers or cookies.
-
-    Priority:
-      1. X-Device-Token HTTP header
-      2. device_token cookie
-    """
-    if request is None:
-        return None
-    return (
-        request.META.get("HTTP_X_DEVICE_TOKEN")
-        or request.COOKIES.get("device_token")
-        or None
-    )
-
-
 class UserDeviceSerializer(serializers.ModelSerializer):
     """
     Serializer for listing trusted user devices.
 
     Includes dynamic fields:
-    - is_current: matches the device token from request header/cookie
-    - is_trusted: True if the device has not been revoked
-    - device_type: derived from User-Agent ('mobile', 'tablet', or 'desktop')
+    - is_current: True if device token in request header/cookie matches this device
+
     """
 
-    device_type = serializers.SerializerMethodField()
-    is_trusted = serializers.SerializerMethodField()
     is_current = serializers.SerializerMethodField()
 
     class Meta:
         model = UserDevice
         fields = [
             "id",
-            "device_type",
+            "user_agent",
             "ip_address",
             "location",
             "last_login_at",
-            "is_trusted",
             "is_current",
         ]
         read_only_fields = fields
 
     def get_is_current(self, obj: UserDevice) -> bool:
         """Dynamically check if this device matches the token in request."""
-        raw_token = _extract_raw_device_token(self.context.get("request"))
+        raw_token = extract_raw_device_token(self.context.get("request"))
+
         if not raw_token:
             return False
         return hmac.compare_digest(
             UserDevice.hash_token(raw_token),
             obj.device_token_hash,
         )
-
-    def get_is_trusted(self, obj: UserDevice) -> bool:
-        """A device is trusted when it is not revoked."""
-        return not obj.is_revoked
-
-    def get_device_type(self, obj: UserDevice) -> str:
-        """Derive device type from User-Agent string."""
-        ua = (obj.user_agent or "").lower()
-        if any(kw in ua for kw in ("mobile", "android", "iphone", "ipad")):
-            return "mobile"
-        if "tablet" in ua:
-            return "tablet"
-        return "desktop"

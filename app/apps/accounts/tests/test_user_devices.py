@@ -76,17 +76,21 @@ class TestUserDeviceListView:
         item = data[0]
         assert item["id"] == active_device.id
         assert item["is_current"] is True
-        assert item["is_trusted"] is True
-        assert item["device_type"] == "mobile"
+        assert (
+            item["user_agent"]
+            == "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
+        )
 
     def test_is_current_via_cookie(self, authenticated_client, user):
         raw_token = secrets.token_urlsafe(32)
+        ua_string = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
         device = UserDeviceFactory(
             user=user,
             device_token_hash=UserDevice.hash_token(raw_token),
             expires_at=timezone.now() + timedelta(days=10),
             is_revoked=False,
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            user_agent=ua_string,
         )
 
         authenticated_client.cookies["device_token"] = raw_token
@@ -97,7 +101,7 @@ class TestUserDeviceListView:
         assert len(data) == 1
         assert data[0]["id"] == device.id
         assert data[0]["is_current"] is True
-        assert data[0]["device_type"] == "desktop"
+        assert data[0]["user_agent"] == ua_string
 
 
 @pytest.mark.django_db
@@ -175,3 +179,33 @@ class TestUserDeviceRevokeAllView:
         device2.refresh_from_db()
         assert device1.is_revoked is True
         assert device2.is_revoked is True
+
+
+@pytest.mark.django_db
+class TestUserDeviceReactivation:
+    def test_reissue_reactivates_revoked_device(self, user):
+        from unittest.mock import MagicMock
+
+        raw_token = "some-revoked-token-12345"
+        device = UserDeviceFactory(
+            user=user,
+            device_token_hash=UserDevice.hash_token(raw_token),
+            is_revoked=True,
+            user_agent="Old-UA",
+        )
+
+        mock_request = MagicMock()
+        mock_request.META = {
+            "HTTP_X_DEVICE_TOKEN": raw_token,
+            "HTTP_USER_AGENT": "Updated-UA",
+            "REMOTE_ADDR": "127.0.0.1",
+        }
+        mock_request.COOKIES = {}
+
+        reactivated_device, new_token = UserDevice.issue(user, mock_request)
+
+        assert reactivated_device.id == device.id
+        assert reactivated_device.is_revoked is False
+        assert new_token != raw_token
+        assert reactivated_device.user_agent == "Updated-UA"
+        assert UserDevice.objects.filter(user=user).count() == 1

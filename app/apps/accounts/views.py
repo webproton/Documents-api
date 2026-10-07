@@ -29,13 +29,13 @@ from .serializers import (
     TwoFactorVerifySerializer,
     UpdateProfileSerializer,
     UserDeviceSerializer,
-    _extract_raw_device_token,
 )
 from .throttling import (
     PhoneConfirmationRateThrottle,
     TwoFactorConfirmRateThrottle,
     TwoFactorResendRateThrottle,
 )
+from .utils import extract_raw_device_token
 
 User = get_user_model()
 
@@ -502,7 +502,7 @@ class UserDeviceRevokeAllView(APIView):
         responses={200: MessageSerializer},
     )
     def post(self, request):
-        raw_token = _extract_raw_device_token(request)
+        raw_token = extract_raw_device_token(request)
         revoked_count = request.user.devices.revoke_all_except(raw_token)
         return Response(
             {"message": f"Revoked {revoked_count} device(s) successfully."},
