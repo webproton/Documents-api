@@ -118,3 +118,25 @@ def hash_otp_code(code: str) -> str:
         msg=code.encode(),
         digestmod=hashlib.sha256,
     ).hexdigest()
+
+
+def extract_raw_device_token(request) -> str | None:
+    """
+    Extract the raw device token from request headers or cookies.
+
+    Priority:
+      1. X-Device-Token HTTP header
+      2. device_token cookie
+    """
+    if request is None:
+        return None
+    return (
+        request.META.get("HTTP_X_DEVICE_TOKEN")
+        or request.META.get("X-Device-Token")
+        or request.COOKIES.get("device_token")
+        or None
+    )
+
+
+# Alias for backward compatibility
+_extract_raw_device_token = extract_raw_device_token

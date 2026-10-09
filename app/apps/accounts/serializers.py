@@ -1,3 +1,4 @@
+import hmac
 import re
 
 from django.conf import settings
@@ -28,6 +29,7 @@ from .models import (
 )
 from .redis_manager import TwoFactorRedisManager
 from .tasks import send_email_otp_task, send_sms_task
+from .utils import extract_raw_device_token
 
 
 class TwoFactorVerifySerializer(serializers.Serializer):
@@ -766,3 +768,38 @@ class RegisterResponseSerializer(serializers.Serializer):
 
     message = serializers.CharField()
     status = serializers.CharField()
+
+
+class UserDeviceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for listing trusted user devices.
+
+    Includes dynamic fields:
+    - is_current: True if device token in request header/cookie matches this device
+
+    """
+
+    is_current = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserDevice
+        fields = [
+            "id",
+            "user_agent",
+            "ip_address",
+            "location",
+            "last_login_at",
+            "is_current",
+        ]
+        read_only_fields = fields
+
+    def get_is_current(self, obj: UserDevice) -> bool:
+        """Dynamically check if this device matches the token in request."""
+        raw_token = extract_raw_device_token(self.context.get("request"))
+
+        if not raw_token:
+            return False
+        return hmac.compare_digest(
+            UserDevice.hash_token(raw_token),
+            obj.device_token_hash,
+        )
