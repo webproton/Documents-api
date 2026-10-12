@@ -60,6 +60,17 @@ class TestDocumentRequestNotifications:
             document_id=created_request.id,
         )
 
+    def test_email_upload_link_points_to_frontend(self, settings):
+        """The emailed link opens the frontend upload page, not the raw API."""
+        settings.FRONTEND_URL = "http://frontend.test"
+        doc_request = DocumentRequestFactory(requester=self.user)
+
+        context = doc_request.get_email_context()
+
+        assert context["upload_url"] == (
+            f"http://frontend.test/upload/{doc_request.token}"
+        )
+
     def test_cancel_document_request_success(self):
         """
         An authorized user can successfully cancel their PENDING request.

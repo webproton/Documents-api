@@ -14,6 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,6 +38,9 @@ if not DEBUG:
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost"])
 
+# Public URL of the React frontend; used for links in emails and Stripe redirects
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173").rstrip("/")
+
 REDIS_URL = env("REDIS_URL")
 
 # Application definition
@@ -48,6 +52,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -61,6 +66,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # Must be placed as high as possible, before CommonMiddleware
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -252,8 +259,6 @@ EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=False)
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
 
 
-EMAIL_CONFIRM_BASE_URL = env("EMAIL_CONFIRM_BASE_URL")
-
 SWAGGER_USE_COMPAT_RENDERERS = False
 
 AVATAR_MAX_SIZE = 5 * 1024 * 1024
@@ -265,21 +270,14 @@ ALLOWED_AVATAR_TYPES = {
 
 DOCUMENT_REQUEST_EXPIRATION_DAYS = env("DOCUMENT_REQUEST_EXPIRATION_DAYS")
 
-BACKEND_URL = env("BACKEND_URL", default="http://localhost:8000")
 # Billing
 
 DEFAULT_CURRENCY = env("DEFAULT_CURRENCY", default="USD")
 
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY")
-STRIPE_SUCCESS_URL = env(
-    "STRIPE_SUCCESS_URL",
-    default="http://localhost:8000/payment/success",
-)
-
-STRIPE_CANCEL_URL = env(
-    "STRIPE_CANCEL_URL",
-    default="http://localhost:8000/payment/cancel",
-)
+# Stripe Checkout redirects the user back to these frontend pages
+STRIPE_SUCCESS_URL = f"{FRONTEND_URL}/billing/success"
+STRIPE_CANCEL_URL = f"{FRONTEND_URL}/billing/cancel"
 
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET")
 
@@ -340,3 +338,11 @@ REST_FRAMEWORK.setdefault("DEFAULT_THROTTLE_RATES", {}).update(
 )
 
 DEVICE_TOKEN_HEADER = "HTTP_X_DEVICE_TOKEN"
+
+
+# ====================== CORS SETTINGS ======================
+# Origins allowed to call the API from a browser (frontend on another host/port)
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[FRONTEND_URL])
+
+# Custom trusted-device header must be explicitly allowed for preflight requests
+CORS_ALLOW_HEADERS = (*default_headers, "x-device-token")
