@@ -33,6 +33,24 @@ def test_register_user(mock_send_email, api_client):
     mock_send_email.delay.assert_called_once()
 
 
+@pytest.mark.django_db(transaction=True)
+@patch("app.apps.accounts.serializers.send_notification_email_task")
+def test_register_confirmation_link_points_to_frontend(
+    mock_send_email, api_client, settings
+):
+    settings.FRONTEND_URL = "http://frontend.test"
+    url = reverse("apps.accounts:register")
+
+    api_client.post(
+        url, {"email": "link@test.com", "password": "StrongPass123"}, format="json"
+    )
+
+    context = mock_send_email.delay.call_args.kwargs["context"]
+    assert context["confirmation_url"] == (
+        f"http://frontend.test/confirm-email?token={context['token']}"
+    )
+
+
 @pytest.mark.django_db
 def test_register_duplicate_email(api_client, user):
     url = reverse("apps.accounts:register")

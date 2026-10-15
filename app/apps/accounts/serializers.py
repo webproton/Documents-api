@@ -463,8 +463,9 @@ class RegisterSerializer(serializers.ModelSerializer):
 
             # Create a confirmation token
             confirmation = EmailConfirmation.create_email_confirmation(user)
+            # Link leads to the frontend page, which POSTs the token to the API
             confirm_url = (
-                f"{settings.EMAIL_CONFIRM_BASE_URL}?token={confirmation.token}"
+                f"{settings.FRONTEND_URL}/confirm-email?token={confirmation.token}"
             )
 
             # context mail
@@ -533,6 +534,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "avatar",
             "is_2fa_enabled",
             "two_factor_method",
+            "phone_number",
+            "phone_confirmed",
         ]
 
 

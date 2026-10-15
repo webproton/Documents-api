@@ -2,6 +2,7 @@
 from io import BytesIO
 
 import pytest
+from apps.accounts.tests.factories import UserFactory
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from PIL import Image
@@ -33,6 +34,34 @@ def test_get_profile(api_client, user):
     assert response.data["email"] == user.email
     assert response.data["first_name"] == user.first_name
     assert response.data["last_name"] == user.last_name
+
+
+@pytest.mark.django_db
+def test_get_profile_includes_phone_status(api_client):
+    user = UserFactory(phone_confirmed_user=True)
+    api_client.force_authenticate(user=user)
+
+    response = api_client.get(reverse("apps.accounts:profile"))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["phone_number"] == user.phone_number
+    assert response.data["phone_confirmed"] is True
+
+
+@pytest.mark.django_db
+def test_patch_profile_ignores_phone_fields(api_client, user):
+    """Phone can only be changed via the SMS confirmation flow."""
+    api_client.force_authenticate(user=user)
+
+    api_client.patch(
+        reverse("apps.accounts:profile"),
+        {"phone_number": "+380501234567", "phone_confirmed": True},
+        format="json",
+    )
+    user.refresh_from_db()
+
+    assert user.phone_number is None
+    assert user.phone_confirmed is False
 
 
 @pytest.mark.django_db
