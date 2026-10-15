@@ -90,6 +90,24 @@ services:
       - redis
 
   # -------------------------
+  # FRONTEND (React + Vite dev server)
+  # -------------------------
+  frontend:
+    build: ./frontend
+    container_name: documents_api_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      # keep container's own node_modules (Linux binaries), not the host's
+      - /app/node_modules
+    environment:
+      # Vite proxies /api and /media to the Django container
+      API_PROXY_TARGET: http://app:8000
+    depends_on:
+      - app
+
+  # -------------------------
   # PGADMIN (DB UI)
   # -------------------------
   pgadmin:

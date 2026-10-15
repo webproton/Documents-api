@@ -136,6 +136,17 @@ Powered by drf-yasg
 docker-compose up --build
 ```
 
+- API: http://localhost:8000 (Swagger: http://localhost:8000/swagger/)
+- Frontend: http://localhost:5173
+
+---
+
+## 🖥 Frontend
+
+React + TypeScript client in [`frontend/`](frontend/README.md).
+Set `FRONTEND_URL` in `.env` (default `http://localhost:5173`) — links in emails and
+Stripe redirects point to it.
+
 🧹 Code Quality
     flake8
     pylint
