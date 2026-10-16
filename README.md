@@ -1,166 +1,126 @@
 # Documents-api
 
-A **Documents API** application built with Django and Django REST Framework.
+A document management service: a **Django REST API** with a **React** client.
 
-The system allows users to manage documents, document types, upload workflows, and document requests with email notifications, subscription plans, and admin control.
+Users keep their documents in folders by type (with version history), request
+documents from other people through secure one-time links, get reminders before
+documents expire, and buy a plan to lift the upload limit. Accounts support
+email/password and Google sign-in, two-factor authentication and per-device
+session management.
 
 ---
 
-## 🚀 Tech Stack
+## 🚀 Tech stack
 
-- Python 3.11+
-- Django
-- Django REST Framework
-- PostgreSQL
-- Celery (background tasks)
-- Redis (Celery broker)
-- Stripe (subscriptions)
-- AWS S3 (media storage)
-- Docker & Docker Compose
-- drf-yasg (API documentation)
+| Backend | Frontend |
+|---|---|
+| Python 3.12, Django, Django REST Framework | React, TypeScript, Vite |
+| PostgreSQL, Redis | React Router, TanStack Query, axios |
+| Celery + Celery Beat (emails, reminders) | React Hook Form + zod, Tailwind CSS |
+| SimpleJWT, Google Identity, Twilio (SMS) | Vitest, Testing Library, MSW |
+| Stripe subscriptions, AWS S3 (private, signed URLs) | oxlint, Prettier |
+| drf-yasg (Swagger), pytest + factory_boy, flake8, pylint, black | |
+
+Everything runs in Docker Compose.
+
+---
+
+## ▶️ Quick start
+
+```bash
+cp .env.example .env          # fill in DB, SECRET_KEY, AWS, Stripe, Google keys
+docker compose up --build -d
+docker compose exec app python manage.py migrate
+docker compose exec app python manage.py createsuperuser
+```
+
+| | URL |
+|---|---|
+| Web app | http://localhost:5173 |
+| API | http://localhost:8000/api/ |
+| Swagger / ReDoc | http://localhost:8000/swagger/ · http://localhost:8000/redoc/ |
+| Django admin | http://localhost:8000/admin/ |
+| pgAdmin | http://localhost:8080 |
+
+Then, in the admin, add a few **Document types** and (for payments) a paid **Plan**
+with its Stripe price id. The FREE plan is created by a migration.
+
+### Development notes
+
+- **Emails** (email confirmation links, 2FA codes, document requests) are printed to
+  the logs by default — `docker compose logs -f celery`. Set `EMAIL_BACKEND` to the
+  SMTP backend to really send them.
+- **SMS codes** are logged as `[DEV 2FA MOCK]` while `DJANGO_DEBUG=True`.
+- **Stripe webhooks** need the Stripe CLI:
+  `stripe listen --forward-to localhost:8000/api/billing/webhook/`, then put the
+  printed `whsec_…` into `STRIPE_WEBHOOK_SECRET`. Test card: `4242 4242 4242 4242`.
+- **Google sign-in**: add `http://localhost:5173` to *Authorized JavaScript origins*
+  of the OAuth client; the frontend reads `GOOGLE_CLIENT_ID` from the root `.env`.
+- `FRONTEND_URL` (default `http://localhost:5173`) is used for links in emails and
+  Stripe redirects.
 
 ---
 
 ## 📦 Features
 
-### 📁 Document Types
-- Managed by admin (via Django admin panel)
-- Fields:
-  - Name
-  - Description
-  - Optional template file
-- Viewable by all users
-- Searchable by name and description
+**Authentication**
+- Registration with email confirmation; login / logout with JWT (rotating refresh tokens)
+- Google sign-in (account is created or linked automatically)
+- Two-factor authentication by email or SMS (phone confirmed first): 6-digit code,
+  valid 20 minutes, 3 attempts, resend cooldown
+- "Trust this device" for 90 days; every login is a device session — users see
+  browser, IP, location and last login, and can end any session (its tokens stop
+  working immediately) or all other sessions
+
+**Profile** — name, avatar (S3), password change; Google-only accounts can set a password.
+
+**Documents**
+- Upload PDF / XLS / XLSX / CSV (≤ 10 MB) with a type and expiration date
+- One folder per type: the newest upload is *active*, older ones *replaced*;
+  deleting the active one restores the previous version
+- Search, sorting, expiration date filters; files are served via expiring signed URLs
+- Users never see other users' documents
+
+**Document requests** — ask anyone by email for a document type; they upload once
+through a public link (30 days, unguessable token), no account needed. Resend at most
+once per hour, cancel at any time.
+
+**Plans & payments** — FREE has an upload limit; paid plans via Stripe Checkout remove
+it. Plan change and cancellation at the end of the billing period.
+
+**Notifications & reminders** — every email is logged; a daily Celery task reminds about
+documents expiring within 30 days (once per document).
+
+**Admin** — users with profile fields and plan, block/activate and change plans in bulk,
+all documents read-only with search by name and author.
 
 ---
 
-### 🔐 Authentication
-- Email + password registration/login
-- Email confirmation after registration
-- Social login (Google/Facebook)
-- Stores:
-  - First name
-  - Last name
-  - Email
-
----
-
-### 📄 User Documents
-- Upload documents (xls, csv, pdf)
-- Fields:
-  - Name
-  - Document type
-  - Expiration date
-  - File
-- Documents grouped by type (“folders”)
-- Active / replaced document logic
-- Filtering, sorting, searching
-- Users can only access their own documents
-
----
-
-### 📬 Document Requests
-- Request documents from other users via email
-- Secure one-time upload link:
-  - expires in 30 days
-  - disabled after upload
-  - hard to guess (token-based)
-- Resend limitation: once per hour
-- Cancel request support
-
----
-
-### 👤 User Profile
-- Update:
-  - Password
-  - First name
-  - Last name
-  - Avatar
-
----
-
-### 💳 Subscription Plans
-- Default upload limit per user
-- Stripe subscription integration
-- Paid plan removes upload limits
-
----
-
-### 🛠 Admin Features
-- View all users and profiles
-- Manage user plans
-- View all documents (read-only)
-- Search documents by:
-  - name
-  - author name
-  - email
-- Block/unblock users
-- Bulk user actions
-
----
-
-### ⏰ Automated Tasks
-- Daily reminders for expiring documents
-- Sent 30 days before expiration
-- Implemented with Celery
-
----
-
-## 🧪 Testing
-- pytest / Django tests
-- factory_boy for test data
-- Covers:
-  - API responses
-  - permissions
-  - document logic
-  - token expiration
-
----
-
-## 📚 API Documentation
-Available via Swagger:
-/api/docs/
-
-Powered by drf-yasg
-
----
-
-## ☁️ Storage
-- Static and media files stored in AWS S3
-
----
-
-## 🐳 Run with Docker
+## 🧪 Tests and code quality
 
 ```bash
-docker-compose up --build
-```
+# Backend: pytest (uses in-memory file storage, never the real S3 bucket)
+docker compose exec app python -m pytest -c ../pytest.ini
+docker compose exec app flake8 --config ../.flake8 .
 
-- API: http://localhost:8000 (Swagger: http://localhost:8000/swagger/)
-- Frontend: http://localhost:5173
+# Frontend
+docker compose exec frontend npm test
+docker compose exec frontend npm run lint
+docker compose exec frontend npm run typecheck
+```
 
 ---
 
-## 🖥 Frontend
+## 🗂 Project structure
 
-React + TypeScript client in [`frontend/`](frontend/README.md).
-Set `FRONTEND_URL` in `.env` (default `http://localhost:5173`) — links in emails and
-Stripe redirects point to it.
+```
+app/                  Django project
+  config/             settings, urls, celery
+  apps/accounts/      users, auth, 2FA, device sessions
+  apps/documents/     document types, documents, requests
+  apps/billing/       plans, subscriptions, Stripe
+  apps/notifications/ emails, reminders
+frontend/             React client (see frontend/README.md)
+```
 
-🧹 Code Quality
-    flake8
-    pylint
-    clean architecture principles
-    DRF best practices
-
-🌿 Git Workflow
-    Main branch: main
-    Feature branches per task
-    Pull Requests required before merge
-
-
-This project follows:
-
-    REST API best practices
-    modular Django architecture
-    secure authentication flows
+Git workflow: one feature branch and pull request per task, merged into `develop`.
