@@ -1,4 +1,3 @@
-# app/apps/accounts/templates/accounts/emails/otp_email.txt
 Hello,
 
 Your verification code is: {{ code }}

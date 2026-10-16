@@ -20,5 +20,12 @@ export const registerSchema = z
     path: ['confirmPassword'],
   })
 
+// Same rule as TwoFactorVerifySerializer.validate_code
+export const twoFactorSchema = z.object({
+  code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code'),
+  rememberDevice: z.boolean(),
+})
+
 export type LoginValues = z.infer<typeof loginSchema>
 export type RegisterValues = z.infer<typeof registerSchema>
+export type TwoFactorValues = z.infer<typeof twoFactorSchema>

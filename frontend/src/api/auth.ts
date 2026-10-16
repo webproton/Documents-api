@@ -24,6 +24,20 @@ export interface LoginTwoFactorRequired {
 
 export type LoginResponse = LoginSuccess | LoginTwoFactorRequired
 
+/** 2FA verified: tokens + trusted-device token when remember_device was set. */
+export interface TwoFactorVerifyResponse extends AuthTokens {
+  id: number
+  email: string
+  device_token?: string
+}
+
+export interface TwoFactorVerifyRequest {
+  pre_auth_token: string
+  code: string
+  /** Trust this browser for 90 days (backend default: true). */
+  remember_device: boolean
+}
+
 export interface Credentials {
   email: string
   password: string
@@ -46,6 +60,19 @@ export const authApi = {
 
   login: (data: Credentials) =>
     apiClient.post<LoginResponse>('/auth/login/', data).then((res) => res.data),
+
+  verifyTwoFactor: (data: TwoFactorVerifyRequest) =>
+    apiClient
+      .post<TwoFactorVerifyResponse>('/auth/2fa/verify/', data)
+      .then((res) => res.data),
+
+  /** New code for the same 2FA session (server cooldown: 60 s). */
+  resendTwoFactor: (preAuthToken: string) =>
+    apiClient
+      .post<MessageResponse>('/auth/2fa/resend/', {
+        pre_auth_token: preAuthToken,
+      })
+      .then((res) => res.data),
 
   /** Blacklists the refresh token on the server. */
   logout: (refresh: string) =>
