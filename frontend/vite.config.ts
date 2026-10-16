@@ -13,7 +13,9 @@ export default defineConfig(({ mode }) => {
   // changeOrigin: false keeps the browser's Host ("localhost:5173"):
   // it is already in DJANGO_ALLOWED_HOSTS, and DRF builds absolute /media/
   // URLs from it, so file links also go through this proxy.
-  const proxyOptions = { target: apiTarget, changeOrigin: false }
+  // xfwd: adds X-Forwarded-For, so Django logs the browser's IP for
+  // device sessions instead of this proxy's container IP.
+  const proxyOptions = { target: apiTarget, changeOrigin: false, xfwd: true }
 
   return {
     plugins: [react(), tailwindcss()],
@@ -31,6 +33,8 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
+      // Worker threads start faster than the default child processes
+      pool: 'threads',
       setupFiles: ['./src/test/setup.ts'],
       css: true,
     },

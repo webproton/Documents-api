@@ -10,12 +10,14 @@ import { TextField } from '@/components/ui/TextField'
 import { applyApiError } from '@/lib/forms'
 import { paths } from '@/routes/paths'
 
+import { useAuth } from './auth-context'
 import { GoogleAuthSection } from './GoogleAuthSection'
 import { loginSchema, type LoginValues } from './schemas'
 import { useCompleteLogin } from './useCompleteLogin'
 
 export function LoginPage() {
   const completeLogin = useCompleteLogin()
+  const { sessionExpired } = useAuth()
   const {
     register,
     handleSubmit,
@@ -38,6 +40,9 @@ export function LoginPage() {
         className="flex flex-col gap-4"
         onSubmit={handleSubmit((values) => login.mutate(values))}
       >
+        {sessionExpired && !errors.root && (
+          <Alert>Your session has ended. Please log in again.</Alert>
+        )}
         {errors.root && <Alert variant="error">{errors.root.message}</Alert>}
 
         <TextField

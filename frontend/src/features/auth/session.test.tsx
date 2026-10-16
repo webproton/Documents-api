@@ -91,5 +91,32 @@ describe('session', () => {
     ).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/login')
     expect(tokenStorage.getRefresh()).toBeNull()
+    // The user is told why they are back on the login page
+    expect(
+      screen.getByText('Your session has ended. Please log in again.'),
+    ).toBeInTheDocument()
+  })
+
+  it('does not say the session ended after a normal logout', async () => {
+    // Logout with an already expired access token: refresh fails too
+    server.use(
+      http.post(api('/auth/logout/'), () =>
+        apiError(401, { detail: 'Token is invalid or expired' }),
+      ),
+      http.post(api('/auth/refresh/'), () =>
+        apiError(401, { detail: 'Token is blacklisted' }),
+      ),
+    )
+    signInAs()
+    const { user } = renderApp('/documents')
+
+    await user.click(await screen.findByRole('button', { name: 'Log out' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Log in' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('Your session has ended. Please log in again.'),
+    ).not.toBeInTheDocument()
   })
 })

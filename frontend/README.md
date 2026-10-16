@@ -41,13 +41,27 @@ Vite dev server, so no CORS setup is needed in development.
 
 ```
 src/
-  api/        axios client, error parsing, API modules per backend app
-  layouts/    MainLayout (authenticated), AuthLayout (guest pages)
-  lib/        token storage and helpers
-  pages/      route pages
-  routes/     route paths and router config
-  test/       test setup
+  api/          axios client (JWT, refresh, X-Device-Token), error parsing,
+                one module per backend app
+  components/   shared UI (Button, TextField, Alert, Card, Modal, Google button)
+  features/     pages and logic per area:
+                auth · profile · security · documents · requests · billing · notifications
+  hooks/        useCountdown, useDebouncedValue
+  layouts/      MainLayout (signed-in, responsive menu), AuthLayout (guest pages)
+  lib/          token storage, formatting, forms, query client
+  pages/        404 and error page
+  routes/       paths, route guards, router (tab titles via route handles)
+  test/         Vitest setup, MSW server with default handlers, render helpers
 ```
 
 Routes `/confirm-email`, `/upload/:token`, `/billing/success` and `/billing/cancel`
 are also used by the backend in emails and Stripe redirects — see `src/routes/paths.ts`.
+
+## Tests
+
+Tests render the real app with its routes; the API is mocked with
+[MSW](https://mswjs.io). A request without a handler fails the test.
+
+```bash
+npm test             # or: docker compose exec frontend npm test
+```
