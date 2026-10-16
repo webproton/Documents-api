@@ -249,7 +249,12 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 
 
-EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+# Console backend prints emails (confirmation links, 2FA codes) to the
+# celery/app logs. Use django.core.mail.backends.smtp.EmailBackend with the
+# EMAIL_HOST* settings below to really send mail. Tests always use locmem.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
+)
 
 EMAIL_HOST = env("EMAIL_HOST", default="localhost")
 EMAIL_PORT = env.int("EMAIL_PORT", default=1025)
