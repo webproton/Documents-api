@@ -23,6 +23,7 @@ export const paths = {
   documentTypes: '/types',
   requests: '/requests',
   notifications: '/notifications',
+  notification: '/notifications/:notificationId',
   billing: '/billing',
   billingSuccess: '/billing/success',
   billingCancel: '/billing/cancel',

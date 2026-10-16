@@ -13,18 +13,18 @@ import { DocumentsPage } from '@/features/documents/DocumentsPage'
 import { DocumentTypesPage } from '@/features/documents/DocumentTypesPage'
 import { FolderPage } from '@/features/documents/FolderPage'
 import { ProfilePage } from '@/features/profile/ProfilePage'
+import { NotificationPage } from '@/features/notifications/NotificationPage'
+import { NotificationsPage } from '@/features/notifications/NotificationsPage'
 import { PublicUploadPage } from '@/features/requests/PublicUploadPage'
 import { RequestsPage } from '@/features/requests/RequestsPage'
 import { SecurityPage } from '@/features/security/SecurityPage'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { MainLayout } from '@/layouts/MainLayout'
 import { NotFoundPage } from '@/pages/NotFoundPage'
-import { PlaceholderPage } from '@/pages/PlaceholderPage'
 
 import { GuestRoute, ProtectedRoute } from './guards'
 import { paths } from './paths'
 
-// Placeholders are replaced by real pages stage by stage.
 export const routes: RouteObject[] = [
   {
     element: <AuthLayout />,
@@ -67,10 +67,8 @@ export const routes: RouteObject[] = [
             element: <DocumentTypesPage />,
           },
           { path: paths.requests, element: <RequestsPage /> },
-          {
-            path: paths.notifications,
-            element: <PlaceholderPage title="Notifications" stage="FE-11" />,
-          },
+          { path: paths.notifications, element: <NotificationsPage /> },
+          { path: paths.notification, element: <NotificationPage /> },
           { path: paths.billing, element: <BillingPage /> },
           { path: paths.billingSuccess, element: <BillingSuccessPage /> },
           { path: paths.billingCancel, element: <BillingCancelPage /> },
