@@ -1,4 +1,7 @@
-from .anonymous_document import AnonymousDocumentUploadSerializer
+from .anonymous_document import (
+    AnonymousDocumentUploadSerializer,
+    DocumentRequestPublicSerializer,
+)
 from .document import (
     DocumentTypePublicSerializer,
     DocumentUpdateSerializer,
@@ -12,6 +15,7 @@ __all__ = [
     "FolderListSerializer",
     "DocumentRequestCreateSerializer",
     "AnonymousDocumentUploadSerializer",
+    "DocumentRequestPublicSerializer",
     "DocumentRequestSerializer",
     "DocumentUpdateSerializer",
     "DocumentTypePublicSerializer",

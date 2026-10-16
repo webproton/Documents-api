@@ -21,6 +21,7 @@ from app.apps.documents.models import Document, DocumentRequest, DocumentType
 from app.apps.documents.serializers import (
     AnonymousDocumentUploadSerializer,
     DocumentRequestCreateSerializer,
+    DocumentRequestPublicSerializer,
     DocumentRequestSerializer,
     DocumentTypePublicSerializer,
     DocumentUpdateSerializer,
@@ -44,6 +45,19 @@ class AnonymousDocumentUploadAPIView(generics.GenericAPIView):
     # which field to search for the request object
     queryset = DocumentRequest.objects.select_related("document_type", "requester")
     serializer_class = AnonymousDocumentUploadSerializer
+
+    @swagger_auto_schema(
+        operation_summary="Get upload link details",
+        operation_description=(
+            "Public: the requested document type, who asked for it and "
+            "whether the link can still be used (PENDING / COMPLETED / "
+            "CANCELED / EXPIRED)."
+        ),
+        responses={200: DocumentRequestPublicSerializer, 404: "Unknown link."},
+    )
+    def get(self, request, token, *args, **kwargs):
+        doc_request = self.get_object()
+        return Response(DocumentRequestPublicSerializer(doc_request).data)
 
     def post(self, request, token, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
