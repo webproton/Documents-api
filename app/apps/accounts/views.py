@@ -29,7 +29,7 @@ from .serializers import (
     UpdateProfileSerializer,
     UserDeviceSerializer,
 )
-from .services import complete_login
+from .services import DEVICE_ID_CLAIM, complete_login
 from .throttling import (
     PhoneConfirmationRateThrottle,
     TwoFactorConfirmRateThrottle,
@@ -246,6 +246,13 @@ class LogoutAPIView(APIView):
             return Response(
                 {"error": "Invalid token"}, status=status.HTTP_400_BAD_REQUEST
             )
+
+        # End this device's session; a trusted device keeps its trust (spec)
+        device_id = token.get(DEVICE_ID_CLAIM)
+        if device_id is not None:
+            device = request.user.devices.filter(id=device_id).first()
+            if device:
+                device.end_session()
 
         return Response(
             {"message": "Logged out successfully"}, status=status.HTTP_200_OK
