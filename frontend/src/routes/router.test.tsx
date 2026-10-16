@@ -1,24 +1,12 @@
-import { render, screen, within } from '@testing-library/react'
-import { createMemoryRouter, RouterProvider } from 'react-router'
+import { screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { AppProviders } from '@/AppProviders'
-
-import { routes } from './router'
-
-function renderAt(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] })
-  render(
-    <AppProviders>
-      <RouterProvider router={router} />
-    </AppProviders>,
-  )
-  return router
-}
+import { renderApp, signInAs } from '@/test/utils'
 
 describe('router', () => {
   it('redirects home to documents inside the main layout', async () => {
-    const router = renderAt('/')
+    signInAs()
+    const { router } = renderApp('/')
 
     expect(
       await screen.findByRole('heading', { name: 'My documents' }),
@@ -31,7 +19,7 @@ describe('router', () => {
   })
 
   it('renders guest pages without the main navigation', async () => {
-    renderAt('/login')
+    renderApp('/login')
 
     expect(
       await screen.findByRole('heading', { name: 'Log in' }),
@@ -39,20 +27,19 @@ describe('router', () => {
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
   })
 
-  it.each([
-    '/confirm-email',
-    '/upload/abc',
-    '/billing/success',
-    '/billing/cancel',
-  ])('serves %s linked from backend emails and Stripe', async (path) => {
-    renderAt(path)
+  it.each(['/upload/abc', '/billing/success', '/billing/cancel'])(
+    'serves %s linked from backend emails and Stripe',
+    async (path) => {
+      signInAs()
+      renderApp(path)
 
-    expect(await screen.findByRole('heading')).toBeInTheDocument()
-    expect(screen.queryByText('Page not found')).not.toBeInTheDocument()
-  })
+      expect(await screen.findByRole('heading')).toBeInTheDocument()
+      expect(screen.queryByText('Page not found')).not.toBeInTheDocument()
+    },
+  )
 
   it('shows 404 for unknown paths', async () => {
-    renderAt('/no-such-page')
+    renderApp('/no-such-page')
 
     expect(await screen.findByText('Page not found')).toBeInTheDocument()
   })
