@@ -1,11 +1,14 @@
 # apps/billing/tests/test_subscription_api.py
 
 import pytest
+from apps.accounts.tests.factories import UserFactory
 from django.urls import reverse
 from rest_framework import status
 
 from app.apps.billing.models import Plan, Subscription
 from app.apps.billing.tests.factories.plan import PlanFactory
+from app.apps.documents.models import Document
+from app.apps.documents.tests.factories import DocumentFactory
 
 
 @pytest.mark.django_db
@@ -71,3 +74,17 @@ def test_current_subscription_ignores_non_active_subscription(
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.data is None
+
+
+@pytest.mark.django_db
+def test_current_subscription_reports_documents_used(api_client, user):
+    """Counted like the upload limit: replaced versions count too."""
+    DocumentFactory(user=user)
+    DocumentFactory(user=user, status=Document.STATUS.REPLACED)
+    DocumentFactory(user=UserFactory())  # someone else's
+    api_client.force_authenticate(user)
+
+    response = api_client.get(reverse("app.apps.billing:current-subscription"))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["documents_used"] == 2
