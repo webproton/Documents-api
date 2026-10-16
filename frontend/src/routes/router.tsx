@@ -4,6 +4,7 @@ import { ConfirmEmailPage } from '@/features/auth/ConfirmEmailPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
 import { TwoFactorPage } from '@/features/auth/TwoFactorPage'
+import { DocumentTypesPage } from '@/features/documents/DocumentTypesPage'
 import { ProfilePage } from '@/features/profile/ProfilePage'
 import { SecurityPage } from '@/features/security/SecurityPage'
 import { AuthLayout } from '@/layouts/AuthLayout'
@@ -57,7 +58,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: paths.documentTypes,
-            element: <PlaceholderPage title="Document types" stage="FE-07" />,
+            element: <DocumentTypesPage />,
           },
           {
             path: paths.requests,
