@@ -30,7 +30,7 @@ function NotificationRow({ notification }: { notification: NotificationItem }) {
         to={generatePath(paths.notification, {
           notificationId: String(notification.id),
         })}
-        className="flex flex-wrap items-start justify-between gap-3 px-6 py-4 hover:bg-slate-50"
+        className="flex flex-wrap items-start justify-between gap-3 px-4 py-4 hover:bg-slate-50 sm:px-6"
       >
         <div className="flex flex-col gap-1">
           <span className="font-medium">{notification.title}</span>

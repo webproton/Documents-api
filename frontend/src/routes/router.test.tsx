@@ -44,3 +44,34 @@ describe('router', () => {
     expect(await screen.findByText('Page not found')).toBeInTheDocument()
   })
 })
+
+describe('app shell', () => {
+  it('collapses the navigation behind a menu button on small screens', async () => {
+    signInAs()
+    const { user } = renderApp('/documents')
+    const menuButton = await screen.findByRole('button', { name: 'Menu' })
+
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('navigation')).toHaveClass('hidden', 'lg:flex')
+
+    await user.click(menuButton)
+    expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('navigation')).not.toHaveClass('hidden')
+
+    // Choosing a page closes the menu
+    await user.click(
+      within(screen.getByRole('navigation')).getByRole('link', {
+        name: 'Billing',
+      }),
+    )
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('sets the browser tab title for each page', async () => {
+    signInAs()
+    renderApp('/types')
+
+    await screen.findByRole('heading', { name: 'Document types' })
+    expect(document.title).toBe('Document types · Documents')
+  })
+})

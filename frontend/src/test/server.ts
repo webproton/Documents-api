@@ -19,9 +19,27 @@ export const testProfile: Profile = {
   has_password: true,
 }
 
-/** Handlers every test gets; override per test with server.use(...). */
+/**
+ * Handlers every test gets: a signed-in user with an empty account.
+ * Pages reached as a side effect (e.g. /documents after login) load
+ * without errors; tests that need data override with server.use(...).
+ */
 export const defaultHandlers = [
   http.get(api('/profile/'), () => HttpResponse.json(testProfile)),
+  http.get(api('/documents/folders/'), () => HttpResponse.json([])),
+  http.get(api('/documents/types/'), () => HttpResponse.json([])),
+  http.get(api('/billing/plans/'), () => HttpResponse.json([])),
+  // No subscription yet
+  http.get(api('/billing/subscription/'), () =>
+    HttpResponse.json(null, { status: 404 }),
+  ),
+  // Unknown upload link
+  http.get(api('/documents/upload/:token/'), () =>
+    HttpResponse.json(
+      { status: 'error', errors: { detail: 'Not found.' } },
+      { status: 404 },
+    ),
+  ),
 ]
 
 export const server = setupServer(...defaultHandlers)

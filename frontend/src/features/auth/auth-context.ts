@@ -4,6 +4,8 @@ import type { SessionTokens } from '@/api/auth'
 
 export interface AuthContextValue {
   isAuthenticated: boolean
+  /** The server ended the session (revoked device, expired, blocked). */
+  sessionExpired: boolean
   /** Save JWT pair + device session token after login / 2FA / Google. */
   signIn: (session: SessionTokens) => void
   /** Blacklist the refresh token and drop the session (device token stays). */

@@ -58,7 +58,7 @@ export function FolderPage() {
               No documents in this folder. Upload one to start it.
             </p>
           ) : (
-            <section className="rounded-xl border border-slate-200 bg-white px-6">
+            <section className="rounded-xl border border-slate-200 bg-white px-4 sm:px-6">
               <ul className="divide-y divide-slate-200">
                 {folder.data.documents.map((document) => (
                   <DocumentVersion key={document.id} document={document} />
