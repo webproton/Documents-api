@@ -183,3 +183,26 @@ class TestDocumentSearchAndFilters:
         assert response.status_code == status.HTTP_200_OK
         # The filter should be skipped, returning the full history (2 documents)
         assert len(response.data) == 2
+
+
+@pytest.mark.django_db
+def test_folder_detail_shows_only_own_documents(api_client, user, user_factory):
+    """Opening a folder must not expose other users' documents (or file URLs)."""
+    folder = DocumentTypeFactory(name="Passport")
+    DocumentFactory(user=user, document_type=folder, name="My passport")
+    DocumentFactory(
+        user=user,
+        document_type=folder,
+        name="My old passport",
+        status=Document.STATUS.REPLACED,
+    )
+    DocumentFactory(user=user_factory(), document_type=folder, name="Foreign passport")
+    api_client.force_authenticate(user=user)
+
+    response = api_client.get(
+        reverse("apps.documents:folder-detail", kwargs={"pk": folder.pk})
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    names = {doc["name"] for doc in response.data["documents"]}
+    assert names == {"My passport", "My old passport"}
