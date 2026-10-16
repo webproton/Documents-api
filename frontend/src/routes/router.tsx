@@ -4,6 +4,7 @@ import { ConfirmEmailPage } from '@/features/auth/ConfirmEmailPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
 import { TwoFactorPage } from '@/features/auth/TwoFactorPage'
+import { ProfilePage } from '@/features/profile/ProfilePage'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { MainLayout } from '@/layouts/MainLayout'
 import { NotFoundPage } from '@/pages/NotFoundPage'
@@ -83,7 +84,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: paths.profile,
-            element: <PlaceholderPage title="Profile" stage="FE-05" />,
+            element: <ProfilePage />,
           },
           {
             path: paths.security,
