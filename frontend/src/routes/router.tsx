@@ -4,6 +4,11 @@ import { ConfirmEmailPage } from '@/features/auth/ConfirmEmailPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
 import { TwoFactorPage } from '@/features/auth/TwoFactorPage'
+import { BillingPage } from '@/features/billing/BillingPage'
+import {
+  BillingCancelPage,
+  BillingSuccessPage,
+} from '@/features/billing/BillingResultPages'
 import { DocumentsPage } from '@/features/documents/DocumentsPage'
 import { DocumentTypesPage } from '@/features/documents/DocumentTypesPage'
 import { FolderPage } from '@/features/documents/FolderPage'
@@ -66,20 +71,9 @@ export const routes: RouteObject[] = [
             path: paths.notifications,
             element: <PlaceholderPage title="Notifications" stage="FE-11" />,
           },
-          {
-            path: paths.billing,
-            element: <PlaceholderPage title="Plans & billing" stage="FE-10" />,
-          },
-          {
-            path: paths.billingSuccess,
-            element: (
-              <PlaceholderPage title="Payment successful" stage="FE-10" />
-            ),
-          },
-          {
-            path: paths.billingCancel,
-            element: <PlaceholderPage title="Payment canceled" stage="FE-10" />,
-          },
+          { path: paths.billing, element: <BillingPage /> },
+          { path: paths.billingSuccess, element: <BillingSuccessPage /> },
+          { path: paths.billingCancel, element: <BillingCancelPage /> },
           {
             path: paths.profile,
             element: <ProfilePage />,
