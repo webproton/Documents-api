@@ -1,6 +1,7 @@
 # app/apps/accounts/tests/test_utils.py
 from unittest.mock import MagicMock, patch
 
+import pytest
 from django.conf import settings
 
 from app.apps.accounts import utils
@@ -82,3 +83,23 @@ class TestUtilsAndSMSService:
                 from_="+12025550143",
                 to="+380970000000",
             )
+
+
+@pytest.mark.parametrize(
+    "ip_address",
+    ["127.0.0.1", "::1", "10.0.0.5", "172.20.0.8", "192.168.65.1", "localhost", ""],
+)
+def test_geoip_skips_internal_addresses(ip_address):
+    """Docker/LAN/loopback addresses never reach the GeoIP database."""
+    with patch.object(utils, "GeoIP2") as geoip:
+        assert utils.get_geoip_location(ip_address) == "Local Network"
+        geoip.assert_not_called()
+
+
+def test_geoip_looks_up_public_addresses():
+    with patch.object(utils, "GeoIP2") as geoip:
+        geoip.return_value.city.return_value = {
+            "city": "Kyiv",
+            "country_name": "Ukraine",
+        }
+        assert utils.get_geoip_location("93.175.10.1") == "Kyiv, Ukraine"

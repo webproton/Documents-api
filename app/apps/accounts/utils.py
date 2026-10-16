@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import ipaddress
 import logging
 import secrets
 import string
@@ -83,13 +84,23 @@ def parse_user_agent(request) -> str:
     return f"{browser} on {os}"
 
 
+def _is_internal_ip(ip_address: str) -> bool:
+    """True for loopback, private (10/8, 172.16/12, 192.168/16) and
+    link-local addresses; False for public or malformed values."""
+    try:
+        ip = ipaddress.ip_address(ip_address)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback or ip.is_link_local
+
+
 def get_geoip_location(ip_address: str) -> str:
     """
     Resolves IP address to 'City, Country' using MaxMind GeoLite2 database.
     Returns 'Unknown' on failure or if IP is local/internal.
     """
-    # Skip lookup for missing or loopback IP addresses
-    if not ip_address or ip_address in ("127.0.0.1", "localhost", "::1"):
+    # Private/loopback addresses (localhost, Docker, LAN) have no location
+    if not ip_address or ip_address == "localhost" or _is_internal_ip(ip_address):
         return "Local Network"
 
     # Query GeoIP database for city and country information
