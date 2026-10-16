@@ -7,6 +7,7 @@ import {
 } from 'react-router'
 
 import { AppProviders } from '@/AppProviders'
+import { createQueryClient } from '@/lib/queryClient'
 import { tokenStorage } from '@/lib/storage'
 import { routes } from '@/routes/router'
 
@@ -20,7 +21,8 @@ export function renderApp(entry: InitialEntry, userOptions?: UserEventOptions) {
   const router = createMemoryRouter(routes, { initialEntries: [entry] })
   const user = userEvent.setup(userOptions)
   render(
-    <AppProviders>
+    // No retries: a failed request shows its error right away
+    <AppProviders queryClient={createQueryClient(0)}>
       <RouterProvider router={router} />
     </AppProviders>,
   )
