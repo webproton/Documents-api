@@ -2,15 +2,13 @@ import hmac
 import re
 
 from django.conf import settings
-from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
 from django.db import IntegrityError, transaction
-from django.utils import timezone
 from google.auth.exceptions import GoogleAuthError
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed, Throttled, ValidationError
+from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
     TokenObtainSerializer,
@@ -28,6 +26,7 @@ from .models import (
     UserDevice,
 )
 from .redis_manager import TwoFactorRedisManager
+from .services import complete_login
 from .tasks import send_email_otp_task, send_sms_task
 from .utils import extract_raw_device_token
 
@@ -293,85 +292,9 @@ class LoginSerializer(TokenObtainPairSerializer):
         # authenticates and sets self.user.
         TokenObtainSerializer.validate(self, attrs)
 
-        # Retrieve the matching active
-        # trusted device for the request based on the device token header
-        device = self._get_trusted_device()
-
-        # Require 2FA
-        # only if the user explicitly enabled it AND the current device
-        # is not trusted/recognized
-        requires_2fa = self.user.is_2fa_enabled and device is None
-
-        if requires_2fa:
-            try:
-                pre_auth_token, otp_code = TwoFactorRedisManager.create_2fa_session(
-                    user_id=self.user.id,
-                    method=self.user.two_factor_method,
-                )
-            except ValueError as exc:
-                # A code was sent less than TWO_FACTOR_RESEND_COOLDOWN seconds
-                # ago (e.g. quick re-login after failed 2FA) → 429, not 500
-                raise Throttled(detail=str(exc)) from exc
-            # Sending OTP via Celery (separately SMS / Email)
-            if self.user.two_factor_method == User.TWO_FACTOR_METHOD.SMS and getattr(
-                self.user, "phone_number", None
-            ):
-
-                transaction.on_commit(
-                    lambda: send_sms_task.delay(self.user.phone_number, otp_code)
-                )
-                message = "Verification code has been sent to your phone."
-            else:
-                transaction.on_commit(
-                    lambda: send_email_otp_task.delay(self.user.id, otp_code)
-                )
-                message = "Verification code has been sent to your email."
-
-            return {
-                "requires_2fa": True,
-                "pre_auth_token": pre_auth_token,
-                "delivery_method": self.user.two_factor_method,
-                "message": message,
-            }
-
-        if device is not None:
-            device.touch()
-
-        # 2FA is not needed (disabled or the device is trusted) – mint tokens now.
-        refresh = self.get_token(self.user)
-
-        # Explicitly update the last_login because we overridden validate()
-        update_last_login(None, self.user)
-
-        return {
-            "refresh": str(refresh),
-            "access": str(refresh.access_token),
-            "email": self.user.email,
-            "id": self.user.id,
-            "requires_2fa": False,
-        }
-
-    def _get_trusted_device(self):
-        """Return the matching non-revoked, non-expired UserDevice for the
-        incoming device token header, or None."""
-
-        request = self.context.get("request")
-        if not request:
-            return None
-
-        raw_token = request.META.get("HTTP_X_DEVICE_TOKEN") or request.META.get(
-            "X-Device-Token"
-        )
-
-        if not raw_token:
-            return None
-
-        return UserDevice.objects.filter(
-            user=self.user,
-            device_token_hash=UserDevice.hash_token(raw_token),
-            is_revoked=False,
-            expires_at__gt=timezone.now(),
-        ).first()
+        # Trusted device → JWT now; 2FA enabled on a new device → OTP step.
+        # Shared with Google sign-in (see services.complete_login).
+        return complete_login(self.user, self.context.get("request"))
 
 
 class Resend2FASerializer(serializers.Serializer):
