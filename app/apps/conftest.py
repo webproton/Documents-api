@@ -36,3 +36,12 @@ def create_default_plans(db):
 @pytest.fixture(autouse=True)
 def stripe_settings(settings):
     settings.STRIPE_WEBHOOK_SECRET = "whsec_test"
+
+
+@pytest.fixture(autouse=True)
+def in_memory_file_storage(settings):
+    """Keep test uploads in memory instead of the real S3 bucket."""
+    settings.STORAGES = {
+        **settings.STORAGES,
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    }
