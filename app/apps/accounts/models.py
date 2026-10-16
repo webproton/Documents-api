@@ -25,7 +25,16 @@ from .utils import (
 
 class UserDevice(TimeStampedModel):
     """
-    Model for storing trusted user devices to bypass 2FA challenges.
+    A browser/device the user is signed in from (one row per device token).
+
+    Every login creates or refreshes a row, so the user sees all active
+    sessions. Two separate deadlines:
+    - expires_at: the session is alive until then (refresh token lifetime,
+      extended on every token refresh; set to now on logout). JWTs carry
+      the row id in the "device_id" claim and stop working once the session
+      is revoked or expired.
+    - trusted_until: 2FA is skipped on this device until then (90 days after
+      a successful 2FA with "remember device"). Null = not trusted.
 
     Inherits 'created' and 'modified' timestamps from TimeStampedModel.
     Stores a SHA-256 hash of the client token sent back via cookies/headers.
@@ -65,7 +74,14 @@ class UserDevice(TimeStampedModel):
 
     expires_at = models.DateTimeField(
         verbose_name="Expires at",
-        help_text="Expiration timestamp for the trusted device session",
+        help_text="Session stays active until then; extended on token refresh",
+    )
+
+    trusted_until = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Trusted until",
+        help_text="2FA is skipped on this device until then (null = not trusted)",
     )
 
     last_login_at = models.DateTimeField(
@@ -93,8 +109,22 @@ class UserDevice(TimeStampedModel):
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     def is_expired(self) -> bool:
-        """Check if the trusted device session has expired."""
+        """Check if the session has expired."""
         return timezone.now() > self.expires_at
+
+    @property
+    def is_trusted(self) -> bool:
+        """Whether 2FA can be skipped on this device right now."""
+        return (
+            not self.is_revoked
+            and self.trusted_until is not None
+            and self.trusted_until > timezone.now()
+        )
+
+    @staticmethod
+    def session_lifetime() -> timedelta:
+        """A session lives as long as its refresh token."""
+        return settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"]
 
     def __str__(self) -> str:
         return f"Device {self.device_token_hash[:8]} for {self.user.email}"
@@ -106,48 +136,68 @@ class UserDevice(TimeStampedModel):
         self.save(update_fields=["last_login_at"])
 
     def revoke(self) -> None:
+        """End the session and drop the trusted status (user action).
+        JWTs with this device_id are rejected from now on."""
         self.is_revoked = True
-        self.save(update_fields=["is_revoked"])
+        self.trusted_until = None
+        self.save(update_fields=["is_revoked", "trusted_until"])
+
+    def end_session(self) -> None:
+        """Logout: the session ends now; a trusted device stays trusted
+        until its 90 days run out (spec: logout keeps the trusted device)."""
+        self.expires_at = timezone.now()
+        self.save(update_fields=["expires_at"])
+
+    def extend_session(self) -> None:
+        """Token refresh: keep an actively used session alive."""
+        session_end = timezone.now() + self.session_lifetime()
+        if session_end > self.expires_at:
+            self.expires_at = session_end
+            self.save(update_fields=["expires_at"])
 
     @classmethod
-    def issue(cls, user, request) -> tuple["UserDevice", str]:
+    def issue(cls, user, request, *, trusted=False) -> tuple["UserDevice", str]:
+        """
+        Start a session for this browser on login and rotate its device token.
+
+        Reuses the row matching the device token sent with the request
+        (also a revoked one — the user just authenticated again), otherwise
+        creates a new row.
+
+        trusted=True (2FA passed with "remember device") trusts the device
+        for TRUSTED_DEVICE_LIFETIME_DAYS. Otherwise an existing trust is kept,
+        but a revoked device never keeps it.
+        """
+        now = timezone.now()
         raw_token = secrets.token_urlsafe(32)
         ip_address = get_client_ip(request) if request else None
-        user_agent = request.META.get("HTTP_USER_AGENT", "") if request else ""
-        location = get_geoip_location(ip_address) if ip_address else ""
-        expires_at = timezone.now() + timedelta(
-            days=settings.TRUSTED_DEVICE_LIFETIME_DAYS
-        )
 
-        # Check if an existing device token
-        # was passed in the request (e.g. previously revoked device)
+        device = None
         existing_raw_token = extract_raw_device_token(request) if request else None
         if existing_raw_token:
-            existing_device = cls.objects.filter(
+            device = cls.objects.filter(
                 user=user,
                 device_token_hash=cls.hash_token(existing_raw_token),
             ).first()
-            if existing_device:
-                existing_device.device_token_hash = cls.hash_token(raw_token)
-                existing_device.is_revoked = False
-                existing_device.expires_at = expires_at
-                existing_device.last_login_at = timezone.now()
-                existing_device.ip_address = ip_address
-                existing_device.location = location
-                existing_device.user_agent = user_agent
-                existing_device.save()
-                return existing_device, raw_token
+        if device is None:
+            device = cls(user=user)
 
-        instance = cls.objects.create(
-            user=user,
-            device_token_hash=cls.hash_token(raw_token),
-            user_agent=user_agent,
-            ip_address=ip_address,
-            location=location,
-            expires_at=expires_at,
-            last_login_at=timezone.now(),
-        )
-        return instance, raw_token
+        if trusted:
+            device.trusted_until = now + timedelta(
+                days=settings.TRUSTED_DEVICE_LIFETIME_DAYS
+            )
+        elif device.is_revoked:
+            device.trusted_until = None
+
+        device.device_token_hash = cls.hash_token(raw_token)
+        device.is_revoked = False
+        device.last_login_at = now
+        device.ip_address = ip_address
+        device.user_agent = request.META.get("HTTP_USER_AGENT", "") if request else ""
+        device.location = get_geoip_location(ip_address) if ip_address else ""
+        device.expires_at = now + cls.session_lifetime()
+        device.save()
+        return device, raw_token
 
 
 def avatar_upload_path(instance, filename):

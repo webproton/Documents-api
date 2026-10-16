@@ -1,11 +1,11 @@
 import { createContext, useContext } from 'react'
 
-import type { AuthTokens } from '@/api/auth'
+import type { SessionTokens } from '@/api/auth'
 
 export interface AuthContextValue {
   isAuthenticated: boolean
-  /** Save JWT pair after login / 2FA / social auth. */
-  signIn: (tokens: AuthTokens) => void
+  /** Save JWT pair + device session token after login / 2FA / Google. */
+  signIn: (session: SessionTokens) => void
   /** Blacklist the refresh token and drop the session (device token stays). */
   signOut: () => Promise<void>
 }

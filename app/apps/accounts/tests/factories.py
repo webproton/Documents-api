@@ -107,6 +107,8 @@ class UserDeviceFactory(factory.django.DjangoModelFactory):
     )
     ip_address = "192.168.1.1"
     expires_at = factory.LazyFunction(lambda: timezone.now() + timedelta(days=60))
+    # Factory devices are trusted (skip 2FA) for as long as they are active
+    trusted_until = factory.LazyAttribute(lambda device: device.expires_at)
     is_revoked = False
 
     class Params:

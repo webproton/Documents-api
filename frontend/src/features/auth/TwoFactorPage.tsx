@@ -10,7 +10,6 @@ import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
 import { useCountdown } from '@/hooks/useCountdown'
-import { tokenStorage } from '@/lib/storage'
 import { paths } from '@/routes/paths'
 
 import { useAuth } from './auth-context'
@@ -60,11 +59,7 @@ function TwoFactorForm({ preAuthToken, message }: TwoFactorState) {
 
   const verify = useMutation({
     mutationFn: authApi.verifyTwoFactor,
-    onSuccess: ({ access, refresh, device_token }) => {
-      if (device_token) tokenStorage.setDeviceToken(device_token)
-      // GuestRoute then redirects to the originally requested page
-      signIn({ access, refresh })
-    },
+    onSuccess: signIn,
     onError: (error) => {
       resetField('code')
       handleError(error)

@@ -26,7 +26,7 @@ from .models import (
     UserDevice,
 )
 from .redis_manager import TwoFactorRedisManager
-from .services import complete_login
+from .services import DEVICE_ID_CLAIM, complete_login, issue_session_tokens
 from .tasks import send_email_otp_task, send_sms_task
 from .utils import extract_raw_device_token
 
@@ -77,26 +77,18 @@ class TwoFactorVerifySerializer(serializers.Serializer):
         return attrs
 
     def save(self, **kwargs):
-        """Issue JWT tokens for the verified user."""
+        """Issue JWT tokens bound to this device's session.
+
+        The device becomes trusted (2FA skipped for 90 days) only when
+        remember_device is set; the device_token is returned either way
+        because it identifies the session.
+        """
         user = self.validated_data["user"]
         remember_device = self.validated_data.get("remember_device", True)
-        request = self.context.get("request")
 
-        # Mint JWT access and refresh tokens for the authenticated user
-        refresh = RefreshToken.for_user(user)
-
-        response_data = {
-            "access": str(refresh.access_token),
-            "refresh": str(refresh),
-            "email": user.email,
-            "id": user.id,
-        }
-        # Issue a trusted device token if requested and HTTP request context is available
-        if remember_device and request:
-            _, raw_token = UserDevice.issue(user, request)
-            response_data["device_token"] = raw_token
-
-        return response_data
+        return issue_session_tokens(
+            user, self.context.get("request"), trust_device=remember_device
+        )
 
 
 class RequestPhoneConfirmationSerializer(serializers.Serializer):
@@ -250,6 +242,15 @@ class SafeTokenRefreshSerializer(TokenRefreshSerializer):
 
         if user.is_blocked:
             raise AuthenticationFailed("This account has been blocked.")
+
+        # Tokens bound to a session die with it (revoked device or logout).
+        # Tokens issued before sessions existed have no claim and still work.
+        device_id = refresh_token.get(DEVICE_ID_CLAIM)
+        if device_id is not None:
+            device = UserDevice.objects.live().filter(id=device_id, user=user).first()
+            if device is None:
+                raise AuthenticationFailed("This session has been ended.")
+            device.extend_session()
 
         return super().validate(attrs)
 
@@ -717,14 +718,17 @@ class RegisterResponseSerializer(serializers.Serializer):
 
 class UserDeviceSerializer(serializers.ModelSerializer):
     """
-    Serializer for listing trusted user devices.
+    Serializer for listing the user's devices / sessions.
 
     Includes dynamic fields:
     - is_current: True if device token in request header/cookie matches this device
-
+    - is_active_session: signed in right now (session not ended or expired)
+    - is_trusted: 2FA is skipped on this device until trusted_until
     """
 
     is_current = serializers.SerializerMethodField()
+    is_active_session = serializers.SerializerMethodField()
+    is_trusted = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = UserDevice
@@ -735,8 +739,14 @@ class UserDeviceSerializer(serializers.ModelSerializer):
             "location",
             "last_login_at",
             "is_current",
+            "is_active_session",
+            "is_trusted",
+            "trusted_until",
         ]
         read_only_fields = fields
+
+    def get_is_active_session(self, obj: UserDevice) -> bool:
+        return not obj.is_expired()
 
     def get_is_current(self, obj: UserDevice) -> bool:
         """Dynamically check if this device matches the token in request."""

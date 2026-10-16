@@ -23,6 +23,7 @@ describe('LoginPage', () => {
         HttpResponse.json({
           access: 'new-access',
           refresh: 'new-refresh',
+          device_token: 'device-session',
           id: 1,
           email: 'user@example.com',
           requires_2fa: false,
@@ -39,6 +40,8 @@ describe('LoginPage', () => {
     expect(router.state.location.pathname).toBe('/documents')
     expect(tokenStorage.getAccess()).toBe('new-access')
     expect(tokenStorage.getRefresh()).toBe('new-refresh')
+    // Identifies this browser's session on the backend
+    expect(tokenStorage.getDeviceToken()).toBe('device-session')
   })
 
   it('goes to the 2FA step when the backend answers 202', async () => {
@@ -105,6 +108,7 @@ describe('LoginPage', () => {
         HttpResponse.json({
           access: 'a',
           refresh: 'r',
+          device_token: 'd',
           id: 1,
           email: 'user@example.com',
           requires_2fa: false,
