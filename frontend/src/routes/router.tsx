@@ -8,6 +8,8 @@ import { DocumentsPage } from '@/features/documents/DocumentsPage'
 import { DocumentTypesPage } from '@/features/documents/DocumentTypesPage'
 import { FolderPage } from '@/features/documents/FolderPage'
 import { ProfilePage } from '@/features/profile/ProfilePage'
+import { PublicUploadPage } from '@/features/requests/PublicUploadPage'
+import { RequestsPage } from '@/features/requests/RequestsPage'
 import { SecurityPage } from '@/features/security/SecurityPage'
 import { AuthLayout } from '@/layouts/AuthLayout'
 import { MainLayout } from '@/layouts/MainLayout'
@@ -33,10 +35,7 @@ export const routes: RouteObject[] = [
       },
       // Public: opened from email links, signed in or not
       { path: paths.confirmEmail, element: <ConfirmEmailPage /> },
-      {
-        path: paths.upload,
-        element: <PlaceholderPage title="Upload document" stage="FE-09" />,
-      },
+      { path: paths.upload, element: <PublicUploadPage /> },
     ],
   },
   // Signed-in users only: guests are sent to login
@@ -62,12 +61,7 @@ export const routes: RouteObject[] = [
             path: paths.documentTypes,
             element: <DocumentTypesPage />,
           },
-          {
-            path: paths.requests,
-            element: (
-              <PlaceholderPage title="Document requests" stage="FE-09" />
-            ),
-          },
+          { path: paths.requests, element: <RequestsPage /> },
           {
             path: paths.notifications,
             element: <PlaceholderPage title="Notifications" stage="FE-11" />,

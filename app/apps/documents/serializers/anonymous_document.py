@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from app.apps.documents.models import Document
 from app.apps.documents.models.document_request import DocumentRequest
+from app.apps.documents.serializers.document import DocumentTypePublicSerializer
 from app.apps.documents.serializers.mixins import (
     CheckDocumentLimitSerializerMixin,
     DocumentFileValidationMixin,
@@ -79,3 +80,30 @@ class AnonymousDocumentUploadSerializer(
         doc_request.save(update_fields=["status"])
 
         return new_document
+
+
+class DocumentRequestPublicSerializer(serializers.ModelSerializer):
+    """
+    What the recipient of an upload link may see before uploading:
+    the requested type, who asked, and whether the link still works.
+    """
+
+    document_type = DocumentTypePublicSerializer(read_only=True)
+    requester_email = serializers.EmailField(source="requester.email", read_only=True)
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentRequest
+        fields = ["document_type", "requester_email", "status", "expires_at"]
+        read_only_fields = fields
+
+    def get_status(self, obj) -> str:
+        """PENDING links past expires_at are already unusable — report EXPIRED
+        even before the daily expiration task updates the row."""
+        if (
+            obj.status == DocumentRequest.STATUS.PENDING
+            and obj.expires_at
+            and obj.expires_at < timezone.now()
+        ):
+            return DocumentRequest.STATUS.EXPIRED
+        return obj.status
