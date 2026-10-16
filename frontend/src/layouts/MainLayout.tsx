@@ -1,10 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router'
 
-import { profileApi } from '@/api/profile'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/features/auth/auth-context'
+import { useProfile } from '@/features/profile/useProfile'
 import { paths } from '@/routes/paths'
 
 const navItems = [
@@ -21,7 +20,7 @@ const navItems = [
 export function MainLayout() {
   const { signOut } = useAuth()
   const [signingOut, setSigningOut] = useState(false)
-  const profile = useQuery({ queryKey: ['profile'], queryFn: profileApi.get })
+  const profile = useProfile()
 
   const handleSignOut = async () => {
     setSigningOut(true)

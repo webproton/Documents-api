@@ -452,6 +452,10 @@ class ProfileSerializer(serializers.ModelSerializer):
     Used for GET /profile/
     """
 
+    # False for accounts created via Google: they can set a password
+    # without providing the current one
+    has_password = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
@@ -464,7 +468,11 @@ class ProfileSerializer(serializers.ModelSerializer):
             "two_factor_method",
             "phone_number",
             "phone_confirmed",
+            "has_password",
         ]
+
+    def get_has_password(self, obj) -> bool:
+        return obj.has_usable_password()
 
 
 class UpdateProfileSerializer(serializers.ModelSerializer):
@@ -532,9 +540,15 @@ class UpdateProfileSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        """Validate password change requirements."""
+        """Validate password change requirements.
 
-        if "new_password" in attrs and "current_password" not in attrs:
+        Users created via Google have no usable password: they may set
+        the first one without current_password.
+        """
+
+        has_password = self.instance.has_usable_password()
+
+        if "new_password" in attrs and has_password and "current_password" not in attrs:
             raise serializers.ValidationError(
                 {
                     "current_password": (

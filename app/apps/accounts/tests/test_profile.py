@@ -306,3 +306,59 @@ def test_update_profile_without_password_still_updates_name(api_client, user):
     assert response.status_code == status.HTTP_200_OK
     user.refresh_from_db()
     assert user.first_name == "NewName"
+
+
+@pytest.mark.django_db
+def test_get_profile_reports_whether_user_has_password(api_client):
+    with_password = UserFactory()
+    with_password.set_password("OldPass123!")
+    with_password.save()
+    # Accounts created via Google have an unusable password
+    social_user = UserFactory()
+    social_user.set_unusable_password()
+    social_user.save()
+    url = reverse("apps.accounts:profile")
+
+    api_client.force_authenticate(user=with_password)
+    assert api_client.get(url).data["has_password"] is True
+
+    api_client.force_authenticate(user=social_user)
+    assert api_client.get(url).data["has_password"] is False
+
+
+@pytest.mark.django_db
+def test_user_without_password_can_set_first_password(api_client):
+    """A Google-only account sets a password without current_password."""
+    user = UserFactory()
+    user.set_unusable_password()
+    user.save()
+    api_client.force_authenticate(user=user)
+
+    response = api_client.patch(
+        reverse("apps.accounts:profile"),
+        {"new_password": "NewSecurePass456!"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    user.refresh_from_db()
+    assert user.check_password("NewSecurePass456!")
+    # From now on the normal rule applies: current password is required
+    assert api_client.get(reverse("apps.accounts:profile")).data["has_password"]
+
+
+@pytest.mark.django_db
+def test_first_password_still_follows_password_rules(api_client):
+    user = UserFactory()
+    user.set_unusable_password()
+    user.save()
+    api_client.force_authenticate(user=user)
+
+    response = api_client.patch(
+        reverse("apps.accounts:profile"),
+        {"new_password": "12345678"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "new_password" in response.data["errors"]
