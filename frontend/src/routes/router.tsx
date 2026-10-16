@@ -4,7 +4,9 @@ import { ConfirmEmailPage } from '@/features/auth/ConfirmEmailPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { RegisterPage } from '@/features/auth/RegisterPage'
 import { TwoFactorPage } from '@/features/auth/TwoFactorPage'
+import { DocumentsPage } from '@/features/documents/DocumentsPage'
 import { DocumentTypesPage } from '@/features/documents/DocumentTypesPage'
+import { FolderPage } from '@/features/documents/FolderPage'
 import { ProfilePage } from '@/features/profile/ProfilePage'
 import { SecurityPage } from '@/features/security/SecurityPage'
 import { AuthLayout } from '@/layouts/AuthLayout'
@@ -50,11 +52,11 @@ export const routes: RouteObject[] = [
           },
           {
             path: paths.documents,
-            element: <PlaceholderPage title="My documents" stage="FE-08" />,
+            element: <DocumentsPage />,
           },
           {
             path: paths.folder,
-            element: <PlaceholderPage title="Folder" stage="FE-08" />,
+            element: <FolderPage />,
           },
           {
             path: paths.documentTypes,
