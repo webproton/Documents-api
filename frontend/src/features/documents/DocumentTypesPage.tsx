@@ -7,8 +7,7 @@ import { parseApiError } from '@/api/errors'
 import { Alert } from '@/components/ui/Alert'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 
-const documentTypesQueryKey = (search: string) =>
-  ['document-types', search] as const
+import { documentQueryKeys } from './queries'
 
 function DocumentTypeCard({ type }: { type: DocumentType }) {
   return (
@@ -45,7 +44,7 @@ export function DocumentTypesPage() {
   }, [search, setSearchParams])
 
   const types = useQuery({
-    queryKey: documentTypesQueryKey(search),
+    queryKey: documentQueryKeys.types(search),
     queryFn: () => documentsApi.listTypes(search),
     // Keep the old list on screen while the next search loads
     placeholderData: keepPreviousData,

@@ -196,7 +196,11 @@ class DocumentFolderViewSet(viewsets.ReadOnlyModelViewSet):
                 .distinct()
             )
 
-        return DocumentType.objects.all().order_by("name")
+        # Detail view: any folder can be opened, but it must list only
+        # the current user's documents (active and replaced)
+        return DocumentType.objects.prefetch_related(
+            Prefetch("documents", queryset=filtered_documents.order_by("-created"))
+        ).order_by("name")
 
     # It’s possible to get all documents in a specified folder
     # GET /api/documents/folders/{id}/all_documents/

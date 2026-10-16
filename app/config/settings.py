@@ -169,13 +169,18 @@ AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
 AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
 AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="eu-central-1")
-AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 AWS_S3_OBJECT_PARAMETERS = {
     "CacheControl": "max-age=86400",  # 24 hours
 }
 
-# Public media files (if public is needed)
-AWS_QUERYSTRING_AUTH = False
+# The bucket is private (user documents, avatars): file URLs are pre-signed
+# and expire. A custom_domain would disable signing, so it is not used.
+AWS_QUERYSTRING_AUTH = True
+AWS_QUERYSTRING_EXPIRE = env.int("AWS_QUERYSTRING_EXPIRE", default=3600)  # seconds
+# SigV4 is required by newer regions (e.g. eu-north-1); virtual-hosted
+# style keeps the regional bucket host in the signed URL (no 307 redirect)
+AWS_S3_SIGNATURE_VERSION = "s3v4"
+AWS_S3_ADDRESSING_STYLE = "virtual"
 AWS_S3_FILE_OVERWRITE = False
 
 
@@ -188,7 +193,10 @@ STORAGES = {
             "secret_key": AWS_SECRET_ACCESS_KEY,
             "bucket_name": AWS_STORAGE_BUCKET_NAME,
             "region_name": AWS_S3_REGION_NAME,
-            "custom_domain": AWS_S3_CUSTOM_DOMAIN,
+            "querystring_auth": AWS_QUERYSTRING_AUTH,
+            "querystring_expire": AWS_QUERYSTRING_EXPIRE,
+            "signature_version": AWS_S3_SIGNATURE_VERSION,
+            "addressing_style": AWS_S3_ADDRESSING_STYLE,
         },
     },
     "staticfiles": {
