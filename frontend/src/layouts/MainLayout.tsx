@@ -1,5 +1,10 @@
+import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router'
 
+import { profileApi } from '@/api/profile'
+import { Button } from '@/components/ui/Button'
+import { useAuth } from '@/features/auth/auth-context'
 import { paths } from '@/routes/paths'
 
 const navItems = [
@@ -14,6 +19,16 @@ const navItems = [
 
 /** Shell for authenticated pages: header with navigation + page content. */
 export function MainLayout() {
+  const { signOut } = useAuth()
+  const [signingOut, setSigningOut] = useState(false)
+  const profile = useQuery({ queryKey: ['profile'], queryFn: profileApi.get })
+
+  const handleSignOut = async () => {
+    setSigningOut(true)
+    // ProtectedRoute redirects to login once the session is gone
+    await signOut()
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-slate-200 bg-white">
@@ -38,6 +53,18 @@ export function MainLayout() {
               </NavLink>
             ))}
           </nav>
+          <div className="ml-auto flex items-center gap-3 text-sm">
+            {profile.data && (
+              <span className="text-slate-600">{profile.data.email}</span>
+            )}
+            <Button
+              variant="secondary"
+              loading={signingOut}
+              onClick={handleSignOut}
+            >
+              Log out
+            </Button>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8">
