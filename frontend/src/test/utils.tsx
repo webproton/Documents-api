@@ -1,15 +1,24 @@
 import { render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createMemoryRouter, RouterProvider } from 'react-router'
+import {
+  createMemoryRouter,
+  RouterProvider,
+  type InitialEntry,
+} from 'react-router'
 
 import { AppProviders } from '@/AppProviders'
 import { tokenStorage } from '@/lib/storage'
 import { routes } from '@/routes/router'
 
-/** Render the whole app (providers + real routes) at the given URL. */
-export function renderApp(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] })
-  const user = userEvent.setup()
+type UserEventOptions = Parameters<typeof userEvent.setup>[0]
+
+/**
+ * Render the whole app (providers + real routes) at the given entry:
+ * a URL string, or { pathname, state } to pass router state.
+ */
+export function renderApp(entry: InitialEntry, userOptions?: UserEventOptions) {
+  const router = createMemoryRouter(routes, { initialEntries: [entry] })
+  const user = userEvent.setup(userOptions)
   render(
     <AppProviders>
       <RouterProvider router={router} />

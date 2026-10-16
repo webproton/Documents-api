@@ -10,7 +10,7 @@ from google.auth.exceptions import GoogleAuthError
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed, ValidationError
+from rest_framework.exceptions import AuthenticationFailed, Throttled, ValidationError
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
     TokenObtainSerializer,
@@ -303,10 +303,15 @@ class LoginSerializer(TokenObtainPairSerializer):
         requires_2fa = self.user.is_2fa_enabled and device is None
 
         if requires_2fa:
-            pre_auth_token, otp_code = TwoFactorRedisManager.create_2fa_session(
-                user_id=self.user.id,
-                method=self.user.two_factor_method,
-            )
+            try:
+                pre_auth_token, otp_code = TwoFactorRedisManager.create_2fa_session(
+                    user_id=self.user.id,
+                    method=self.user.two_factor_method,
+                )
+            except ValueError as exc:
+                # A code was sent less than TWO_FACTOR_RESEND_COOLDOWN seconds
+                # ago (e.g. quick re-login after failed 2FA) → 429, not 500
+                raise Throttled(detail=str(exc)) from exc
             # Sending OTP via Celery (separately SMS / Email)
             if self.user.two_factor_method == User.TWO_FACTOR_METHOD.SMS and getattr(
                 self.user, "phone_number", None

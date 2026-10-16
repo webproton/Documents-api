@@ -1,28 +1,24 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
-import { Link, useNavigate } from 'react-router'
+import { Link, useLocation, useNavigate } from 'react-router'
 
-import { authApi, type TwoFactorMethod } from '@/api/auth'
+import { authApi } from '@/api/auth'
 import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
 import { applyApiError } from '@/lib/forms'
+import type { RedirectState } from '@/routes/guards'
 import { paths } from '@/routes/paths'
 
 import { useAuth } from './auth-context'
 import { loginSchema, type LoginValues } from './schemas'
-
-/** State passed to the 2FA page when the backend answers 202. */
-export interface TwoFactorState {
-  preAuthToken: string
-  deliveryMethod: TwoFactorMethod
-  message: string
-}
+import type { TwoFactorState } from './two-factor'
 
 export function LoginPage() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const {
     register,
     handleSubmit,
@@ -38,6 +34,8 @@ export function LoginPage() {
           preAuthToken: data.pre_auth_token,
           deliveryMethod: data.delivery_method,
           message: data.message,
+          // Keep the originally requested page through the 2FA step
+          from: (location.state as RedirectState | null)?.from,
         }
         navigate(paths.twoFactor, { state })
         return

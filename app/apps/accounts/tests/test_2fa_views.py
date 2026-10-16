@@ -115,6 +115,31 @@ def test_login_requires_2fa_when_device_token_is_revoked(api_client):
 
 
 @pytest.mark.django_db
+@patch("app.apps.accounts.serializers.send_email_otp_task")
+def test_login_again_within_2fa_cooldown_returns_429(mock_email_task, api_client):
+    """
+    Re-login right after the previous 2FA attempt (resend cooldown still
+    active) must be rejected with 429 and a clear message, not crash with 500.
+    """
+    password = "SecurePass123!"
+    user = UserFactory(is_2fa_enabled=True)
+    user.set_password(password)
+    user.save()
+    url = reverse("apps.accounts:login")
+    credentials = {"email": user.email, "password": password}
+
+    first = api_client.post(url, credentials, format="json")
+    second = api_client.post(url, credentials, format="json")
+
+    assert first.status_code == status.HTTP_202_ACCEPTED
+    assert second.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert second.data["errors"]["detail"] == (
+        "Please wait before requesting a new verification code."
+    )
+    assert "pre_auth_token" not in second.data
+
+
+@pytest.mark.django_db
 def test_login_bypasses_2fa_if_2fa_disabled_even_without_device(api_client):
     """
     Verifies that if 2FA is disabled (is_2fa_enabled = False),
