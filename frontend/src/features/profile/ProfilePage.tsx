@@ -21,7 +21,7 @@ export function ProfilePage() {
         <>
           <AvatarCard profile={profile.data} />
           <NameForm profile={profile.data} />
-          <PasswordForm />
+          <PasswordForm hasPassword={profile.data.has_password} />
         </>
       )}
     </div>

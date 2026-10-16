@@ -14,19 +14,23 @@ export const nameSchema = z.object({
   last_name: name('Last name'),
 })
 
-export const passwordSchema = z
-  .object({
-    current_password: z.string().min(1, 'Enter your current password'),
-    new_password: z.string().min(8, 'Password must be at least 8 characters'),
-    confirm_password: z.string(),
-  })
-  .refine((data) => data.new_password === data.confirm_password, {
-    message: 'Passwords do not match',
-    path: ['confirm_password'],
-  })
+/** Current password is required only when the account already has one. */
+export const passwordSchema = (hasPassword: boolean) =>
+  z
+    .object({
+      current_password: hasPassword
+        ? z.string().min(1, 'Enter your current password')
+        : z.string(),
+      new_password: z.string().min(8, 'Password must be at least 8 characters'),
+      confirm_password: z.string(),
+    })
+    .refine((data) => data.new_password === data.confirm_password, {
+      message: 'Passwords do not match',
+      path: ['confirm_password'],
+    })
 
 export type NameValues = z.infer<typeof nameSchema>
-export type PasswordValues = z.infer<typeof passwordSchema>
+export type PasswordValues = z.infer<ReturnType<typeof passwordSchema>>
 
 // settings.AVATAR_MAX_SIZE and settings.ALLOWED_AVATAR_TYPES
 export const AVATAR_MAX_BYTES = 5 * 1024 * 1024

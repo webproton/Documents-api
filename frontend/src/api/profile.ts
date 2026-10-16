@@ -12,6 +12,8 @@ export interface Profile {
   two_factor_method: TwoFactorMethod
   phone_number: string | null
   phone_confirmed: boolean
+  /** False for Google-created accounts: first password needs no current one. */
+  has_password: boolean
 }
 
 export interface ProfileNameUpdate {
@@ -20,7 +22,8 @@ export interface ProfileNameUpdate {
 }
 
 export interface PasswordChange {
-  current_password: string
+  /** Required unless the account has no password yet (has_password=false). */
+  current_password?: string
   new_password: string
 }
 

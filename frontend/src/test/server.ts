@@ -16,6 +16,7 @@ export const testProfile: Profile = {
   two_factor_method: 'EMAIL',
   phone_number: null,
   phone_confirmed: false,
+  has_password: true,
 }
 
 /** Handlers every test gets; override per test with server.use(...). */

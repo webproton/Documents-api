@@ -10,6 +10,7 @@ import { TextField } from '@/components/ui/TextField'
 import { applyApiError } from '@/lib/forms'
 
 import { passwordSchema, type PasswordValues } from './schemas'
+import { useRefreshProfile } from './useProfile'
 
 const emptyValues: PasswordValues = {
   current_password: '',
@@ -17,7 +18,13 @@ const emptyValues: PasswordValues = {
   confirm_password: '',
 }
 
-export function PasswordForm() {
+interface PasswordFormProps {
+  /** False for Google-created accounts: "set" instead of "change". */
+  hasPassword: boolean
+}
+
+export function PasswordForm({ hasPassword }: PasswordFormProps) {
+  const refreshProfile = useRefreshProfile()
   const {
     register,
     handleSubmit,
@@ -25,36 +32,60 @@ export function PasswordForm() {
     reset,
     formState: { errors },
   } = useForm<PasswordValues>({
-    resolver: zodResolver(passwordSchema),
+    resolver: zodResolver(passwordSchema(hasPassword)),
     defaultValues: emptyValues,
   })
 
-  const change = useMutation({
+  const save = useMutation({
     mutationFn: profileApi.changePassword,
-    onSuccess: () => reset(emptyValues),
+    onSuccess: () => {
+      reset(emptyValues)
+      // A first password switches the form to "change" mode
+      if (!hasPassword) return refreshProfile()
+    },
     onError: (error) =>
       applyApiError(error, setError, ['current_password', 'new_password']),
   })
 
+  const title = hasPassword ? 'Change password' : 'Set password'
+
   return (
-    <Card title="Change password">
+    <Card
+      title={title}
+      description={
+        hasPassword
+          ? undefined
+          : 'You signed up with Google. Set a password to also log in with your email.'
+      }
+    >
       <form
         noValidate
         className="flex flex-col gap-4"
         onSubmit={handleSubmit(({ current_password, new_password }) =>
-          change.mutate({ current_password, new_password }),
+          save.mutate(
+            hasPassword ? { current_password, new_password } : { new_password },
+          ),
         )}
       >
         {errors.root && <Alert variant="error">{errors.root.message}</Alert>}
-        {change.isSuccess && <Alert variant="success">Password changed.</Alert>}
+        {save.isSuccess && (
+          <Alert variant="success">
+            {/* Based on what was sent: hasPassword flips to true after a first set */}
+            {save.variables.current_password === undefined
+              ? 'Password set.'
+              : 'Password changed.'}
+          </Alert>
+        )}
 
-        <TextField
-          label="Current password"
-          type="password"
-          autoComplete="current-password"
-          error={errors.current_password?.message}
-          {...register('current_password')}
-        />
+        {hasPassword && (
+          <TextField
+            label="Current password"
+            type="password"
+            autoComplete="current-password"
+            error={errors.current_password?.message}
+            {...register('current_password')}
+          />
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
             label="New password"
@@ -73,8 +104,8 @@ export function PasswordForm() {
         </div>
 
         <div>
-          <Button type="submit" loading={change.isPending}>
-            Change password
+          <Button type="submit" loading={save.isPending}>
+            {title}
           </Button>
         </div>
       </form>

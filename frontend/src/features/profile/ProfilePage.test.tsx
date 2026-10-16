@@ -28,6 +28,7 @@ function mockProfileApi(initial: Partial<Profile> = {}) {
         patches.push(body)
         if (body.first_name) profile.first_name = body.first_name
         if (body.last_name) profile.last_name = body.last_name
+        if (body.new_password) profile.has_password = true
       }
       const { first_name, last_name, avatar } = profile
       return HttpResponse.json({ first_name, last_name, avatar })
@@ -206,6 +207,32 @@ describe('ProfilePage', () => {
         await screen.findByText('Passwords do not match'),
       ).toBeInTheDocument()
       expect(patches).toEqual([])
+    })
+  })
+
+  describe('set password (account created with Google)', () => {
+    it('sets the first password without asking for a current one', async () => {
+      const { patches, user } = await openProfile({ has_password: false })
+
+      expect(screen.getByText(/You signed up with Google/)).toBeInTheDocument()
+      expect(
+        screen.queryByLabelText('Current password'),
+      ).not.toBeInTheDocument()
+
+      await user.type(screen.getByLabelText('New password'), 'NewPass456')
+      await user.type(
+        screen.getByLabelText('Confirm new password'),
+        'NewPass456',
+      )
+      await user.click(screen.getByRole('button', { name: 'Set password' }))
+
+      expect(await screen.findByText('Password set.')).toBeInTheDocument()
+      expect(patches).toEqual([{ new_password: 'NewPass456' }])
+      // Profile now has a password → the form switches to "change" mode
+      expect(
+        await screen.findByRole('heading', { name: 'Change password' }),
+      ).toBeInTheDocument()
+      expect(screen.getByLabelText('Current password')).toBeInTheDocument()
     })
   })
 })
