@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 
-import { authApi, type AuthTokens } from '@/api/auth'
+import { authApi, type SessionTokens } from '@/api/auth'
 import { setSessionExpiredHandler } from '@/api/client'
 import { tokenStorage } from '@/lib/storage'
 
@@ -32,8 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setSessionExpiredHandler(() => {})
   }, [endSession])
 
-  const signIn = useCallback((tokens: AuthTokens) => {
-    tokenStorage.setTokens(tokens.access, tokens.refresh)
+  const signIn = useCallback((session: SessionTokens) => {
+    tokenStorage.setTokens(session.access, session.refresh)
+    // Identifies this browser's session on the server (and trust for 2FA)
+    tokenStorage.setDeviceToken(session.device_token)
+    // GuestRoute then redirects to the originally requested page
     setIsAuthenticated(true)
   }, [])
 

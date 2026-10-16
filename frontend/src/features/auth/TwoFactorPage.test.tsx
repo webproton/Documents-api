@@ -24,6 +24,7 @@ const verified = (extra: object = {}) =>
   HttpResponse.json({
     access: 'access-2fa',
     refresh: 'refresh-2fa',
+    device_token: 'device-session',
     id: 1,
     email: 'user@example.com',
     ...extra,
@@ -103,7 +104,8 @@ describe('TwoFactorPage', () => {
       await screen.findByRole('heading', { name: 'My documents' }),
     ).toBeInTheDocument()
     expect(body.remember_device).toBe(false)
-    expect(tokenStorage.getDeviceToken()).toBeNull()
+    // The session token is stored either way; the backend just won't trust it
+    expect(tokenStorage.getDeviceToken()).toBe('device-session')
   })
 
   it('returns to the page requested before login', async () => {

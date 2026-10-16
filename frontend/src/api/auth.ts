@@ -7,11 +7,17 @@ export interface AuthTokens {
 
 export type TwoFactorMethod = 'EMAIL' | 'SMS'
 
-/** 200: 2FA disabled or trusted device — tokens issued right away. */
-export interface LoginSuccess extends AuthTokens {
-  requires_2fa: false
+/** Every successful login starts a device session identified by device_token. */
+export interface SessionTokens extends AuthTokens {
   id: number
   email: string
+  /** Send back as X-Device-Token: identifies the session (skips 2FA if trusted). */
+  device_token: string
+}
+
+/** 200: 2FA disabled or trusted device — tokens issued right away. */
+export interface LoginSuccess extends SessionTokens {
+  requires_2fa: false
 }
 
 /** 202: 2FA required — continue on the 2FA page with pre_auth_token. */
@@ -25,16 +31,10 @@ export interface LoginTwoFactorRequired {
 export type LoginResponse = LoginSuccess | LoginTwoFactorRequired
 
 /** Google sign-in: tokens right away; 2FA step if the backend requires it. */
-export type GoogleAuthResponse =
-  | (AuthTokens & { id: number; email: string; requires_2fa?: false })
-  | LoginTwoFactorRequired
+export type GoogleAuthResponse = LoginSuccess | LoginTwoFactorRequired
 
-/** 2FA verified: tokens + trusted-device token when remember_device was set. */
-export interface TwoFactorVerifyResponse extends AuthTokens {
-  id: number
-  email: string
-  device_token?: string
-}
+/** 2FA verified; the device is trusted for 90 days if remember_device was set. */
+export type TwoFactorVerifyResponse = SessionTokens
 
 export interface TwoFactorVerifyRequest {
   pre_auth_token: string

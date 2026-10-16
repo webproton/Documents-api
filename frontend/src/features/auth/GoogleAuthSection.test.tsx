@@ -62,6 +62,7 @@ describe('Google sign-in', () => {
         return HttpResponse.json({
           access: 'google-access',
           refresh: 'google-refresh',
+          device_token: 'device-google',
           id: 7,
           email: 'jane@gmail.com',
         })

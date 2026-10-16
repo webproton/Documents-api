@@ -30,8 +30,7 @@ export function useCompleteLogin() {
         navigate(paths.twoFactor, { state })
         return
       }
-      // GuestRoute redirects to the originally requested page
-      signIn({ access: data.access, refresh: data.refresh })
+      signIn(data)
     },
     [location.state, navigate, signIn],
   )
