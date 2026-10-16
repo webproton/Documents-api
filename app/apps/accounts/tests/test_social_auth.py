@@ -1,10 +1,12 @@
 from unittest.mock import patch
 
 import pytest
+from apps.accounts.tests.factories import UserDeviceFactory, UserFactory
+from django.core.cache import cache
 from django.urls import reverse
 from rest_framework import status
 
-from app.apps.accounts.models import SocialAccount, User
+from app.apps.accounts.models import SocialAccount, User, UserDevice
 
 GOOGLE_DATA = {
     "sub": "google-123",
@@ -265,3 +267,72 @@ def test_google_auth_rejects_blocked_user(
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "id_token" in response.data["errors"]
+
+
+# ==============================================================================
+# Google sign-in follows the same 2FA rules as password login
+# ==============================================================================
+
+
+@pytest.fixture
+def google_2fa_user(settings):
+    """Existing user with email 2FA enabled, signing in with Google."""
+    cache.clear()  # reset 2FA resend cooldowns stored in Redis
+    settings.GOOGLE_CLIENT_ID = "test-client-id"
+    return UserFactory(email=GOOGLE_DATA["email"], is_2fa_enabled=True)
+
+
+@pytest.mark.django_db
+@patch("app.apps.accounts.services.send_email_otp_task")
+@patch("app.apps.accounts.serializers.id_token.verify_oauth2_token")
+def test_google_auth_requires_2fa_on_untrusted_device(
+    mock_verify,
+    mock_email_task,
+    api_client,
+    google_2fa_user,
+    django_capture_on_commit_callbacks,
+):
+    mock_verify.return_value = GOOGLE_DATA
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = api_client.post(
+            reverse("apps.accounts:google-auth"),
+            {"id_token": "valid-google-token"},
+            format="json",
+        )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    assert response.data["requires_2fa"] is True
+    assert response.data["delivery_method"] == User.TWO_FACTOR_METHOD.EMAIL
+    assert "pre_auth_token" in response.data
+    # No JWT before the second factor is verified
+    assert "access" not in response.data
+    mock_email_task.delay.assert_called_once()
+    assert mock_email_task.delay.call_args.args[0] == google_2fa_user.id
+
+
+@pytest.mark.django_db
+@patch("app.apps.accounts.serializers.id_token.verify_oauth2_token")
+def test_google_auth_skips_2fa_on_trusted_device(
+    mock_verify, api_client, google_2fa_user
+):
+    mock_verify.return_value = GOOGLE_DATA
+    raw_device_token = "trusted-device-token-123"
+    device = UserDeviceFactory(
+        user=google_2fa_user,
+        device_token_hash=UserDevice.hash_token(raw_device_token),
+        last_login_at=None,
+    )
+
+    response = api_client.post(
+        reverse("apps.accounts:google-auth"),
+        {"id_token": "valid-google-token"},
+        format="json",
+        HTTP_X_DEVICE_TOKEN=raw_device_token,
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["requires_2fa"] is False
+    assert "access" in response.data
+    device.refresh_from_db()
+    assert device.last_login_at is not None

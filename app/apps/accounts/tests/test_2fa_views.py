@@ -115,7 +115,7 @@ def test_login_requires_2fa_when_device_token_is_revoked(api_client):
 
 
 @pytest.mark.django_db
-@patch("app.apps.accounts.serializers.send_email_otp_task")
+@patch("app.apps.accounts.services.send_email_otp_task")
 def test_login_again_within_2fa_cooldown_returns_429(mock_email_task, api_client):
     """
     Re-login right after the previous 2FA attempt (resend cooldown still

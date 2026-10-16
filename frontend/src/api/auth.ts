@@ -24,6 +24,11 @@ export interface LoginTwoFactorRequired {
 
 export type LoginResponse = LoginSuccess | LoginTwoFactorRequired
 
+/** Google sign-in: tokens right away; 2FA step if the backend requires it. */
+export type GoogleAuthResponse =
+  | (AuthTokens & { id: number; email: string; requires_2fa?: false })
+  | LoginTwoFactorRequired
+
 /** 2FA verified: tokens + trusted-device token when remember_device was set. */
 export interface TwoFactorVerifyResponse extends AuthTokens {
   id: number
@@ -60,6 +65,12 @@ export const authApi = {
 
   login: (data: Credentials) =>
     apiClient.post<LoginResponse>('/auth/login/', data).then((res) => res.data),
+
+  /** Exchange a Google ID token for JWT (creates or links the account). */
+  googleAuth: (idToken: string) =>
+    apiClient
+      .post<GoogleAuthResponse>('/auth/social/google/', { id_token: idToken })
+      .then((res) => res.data),
 
   verifyTwoFactor: (data: TwoFactorVerifyRequest) =>
     apiClient

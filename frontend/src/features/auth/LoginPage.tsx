@@ -1,24 +1,21 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
-import { Link, useLocation, useNavigate } from 'react-router'
+import { Link } from 'react-router'
 
 import { authApi } from '@/api/auth'
 import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
 import { TextField } from '@/components/ui/TextField'
 import { applyApiError } from '@/lib/forms'
-import type { RedirectState } from '@/routes/guards'
 import { paths } from '@/routes/paths'
 
-import { useAuth } from './auth-context'
+import { GoogleAuthSection } from './GoogleAuthSection'
 import { loginSchema, type LoginValues } from './schemas'
-import type { TwoFactorState } from './two-factor'
+import { useCompleteLogin } from './useCompleteLogin'
 
 export function LoginPage() {
-  const { signIn } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
+  const completeLogin = useCompleteLogin()
   const {
     register,
     handleSubmit,
@@ -28,21 +25,7 @@ export function LoginPage() {
 
   const login = useMutation({
     mutationFn: authApi.login,
-    onSuccess: (data) => {
-      if (data.requires_2fa) {
-        const state: TwoFactorState = {
-          preAuthToken: data.pre_auth_token,
-          deliveryMethod: data.delivery_method,
-          message: data.message,
-          // Keep the originally requested page through the 2FA step
-          from: (location.state as RedirectState | null)?.from,
-        }
-        navigate(paths.twoFactor, { state })
-        return
-      }
-      // GuestRoute redirects to the originally requested page
-      signIn(data)
-    },
+    onSuccess: completeLogin,
     onError: (error) => applyApiError(error, setError, ['email', 'password']),
   })
 
@@ -76,6 +59,8 @@ export function LoginPage() {
           Log in
         </Button>
       </form>
+
+      <GoogleAuthSection />
 
       <p className="text-center text-sm text-slate-600">
         No account?{' '}

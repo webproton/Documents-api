@@ -10,6 +10,7 @@ import { TextField } from '@/components/ui/TextField'
 import { applyApiError } from '@/lib/forms'
 import { paths } from '@/routes/paths'
 
+import { GoogleAuthSection } from './GoogleAuthSection'
 import { registerSchema, type RegisterValues } from './schemas'
 
 export function RegisterPage() {
@@ -83,6 +84,8 @@ export function RegisterPage() {
           Create account
         </Button>
       </form>
+
+      <GoogleAuthSection text="signup_with" />
 
       <p className="text-center text-sm text-slate-600">
         Already have an account?{' '}

@@ -1,5 +1,4 @@
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework import generics, permissions, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -30,6 +29,7 @@ from .serializers import (
     UpdateProfileSerializer,
     UserDeviceSerializer,
 )
+from .services import complete_login
 from .throttling import (
     PhoneConfirmationRateThrottle,
     TwoFactorConfirmRateThrottle,
@@ -405,36 +405,32 @@ class GoogleAuthAPIView(APIView):
     @swagger_auto_schema(
         operation_summary="Authenticate with Google",
         operation_description=(
-            "Validate a Google ID token, create or link the user, "
-            "and return JWT access and refresh tokens."
+            "Validate a Google ID token, create or link the user. "
+            "Same 2FA rules as password login: if 2FA is enabled and the "
+            "device is not trusted, returns 202 with pre_auth_token; "
+            "otherwise returns JWT access and refresh tokens."
         ),
         request_body=GoogleAuthSerializer,
         responses={
             200: TokenResponseSerializer,
+            202: "2FA required. Returns pre_auth_token.",
             400: "Invalid Google ID token or unverified email.",
         },
     )
     def post(self, request):
-        """Validate Google credentials and return JWT tokens."""
+        """Validate Google credentials, then apply the shared 2FA login flow."""
 
         serializer = GoogleAuthSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         user = serializer.save()
-        user.last_login = timezone.now()
-        user.save(update_fields=["last_login"])
 
-        refresh = RefreshToken.for_user(user)
+        # A Google account proves identity like a password does — it must
+        # not bypass 2FA on an untrusted device
+        data = complete_login(user, request)
 
-        return Response(
-            {
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
-                "id": user.id,
-                "email": user.email,
-            },
-            status=status.HTTP_200_OK,
-        )
+        if data["requires_2fa"]:
+            return Response(data, status=status.HTTP_202_ACCEPTED)
+        return Response(data, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
